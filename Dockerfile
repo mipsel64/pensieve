@@ -11,6 +11,8 @@ COPY Cargo.toml Cargo.lock ./
 COPY server/Cargo.toml server/build.rs ./server/
 COPY server/src ./server/src
 COPY --from=web /web/dist ./server/web/dist
+ARG GIT_SHA=unknown
+ARG BUILD_DATE
 RUN cargo build --locked --release --bin pensieve-server \
     && install -d -m 0700 /var/lib/pensieve
 

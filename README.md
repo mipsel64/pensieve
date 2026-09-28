@@ -8,7 +8,9 @@ Pages are indexed per `##`/`###` section with SQLite FTS5 BM25. With a Jev key, 
 
 ## Server
 
-Building needs Rust and Node 22.18 or newer. The web UI (React and Vite, in `server/web`) is compiled into `pensieve-server`, so run `make` once before `cargo build` or `cargo test`.
+[Releases](https://github.com/mipsel64/pensieve/releases) have `pensieve-server` for Linux (glibc 2.35 or newer) and macOS, on amd64 and arm64, with `pensieve.example.toml` and the service files from `examples/`. To run one without a checkout, copy the example config to `~/.config/pensieve/config.toml` (mode 0600), set `server.token` (`openssl rand -hex 32`), and run `pensieve-server serve`.
+
+To build from source instead, you need Rust and Node 22.18 or newer. The web UI (React and Vite, in `server/web`) is compiled into `pensieve-server`, so run `make` once before `cargo build` or `cargo test`.
 
 ```sh
 make setup      # installs pensieve-server to ~/.local/bin and starts the service
@@ -44,7 +46,7 @@ Signing in sets a signed session cookie that lasts 30 days and can only read: wr
 
 ## Docker
 
-The image contains only `pensieve-server` and runs as a non-root user. The database is stored in the `/var/lib/pensieve` volume.
+The image contains only `pensieve-server` and runs as a non-root user. The database is stored in the `/var/lib/pensieve` volume. Releases publish `ghcr.io/mipsel64/pensieve:vX.Y.Z` and `:latest`, and `main` publishes `:nightly`. The commands below build the image locally as `pensieve`; to use a published image, pull it and use its name instead.
 
 ```sh
 docker build -t pensieve .
