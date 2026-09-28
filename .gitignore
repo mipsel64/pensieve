@@ -2,3 +2,5 @@
 *.db
 *.db-*
 /.pi
+server/web/node_modules/
+server/web/dist/

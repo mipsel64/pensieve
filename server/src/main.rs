@@ -11,6 +11,7 @@ use std::{
 };
 
 use clap::{Parser, Subcommand};
+use tokio::signal::unix::{SignalKind, signal};
 
 use crate::{
     rerank::{
@@ -97,7 +98,19 @@ async fn main() -> CliResult {
                 token,
             });
             let listener = tokio::net::TcpListener::bind(listen).await?;
-            axum::serve(listener, server::router(app)).await?;
+            // Explicit handlers: as PID 1 in a container, signals without one are ignored.
+            let (mut interrupt, mut terminate) = (
+                signal(SignalKind::interrupt())?,
+                signal(SignalKind::terminate())?,
+            );
+            axum::serve(listener, server::router(app))
+                .with_graceful_shutdown(async move {
+                    tokio::select! {
+                        _ = interrupt.recv() => {}
+                        _ = terminate.recv() => {}
+                    }
+                })
+                .await?;
         }
         Command::Import { dir } => import(storage.as_ref(), &dir).await?,
         Command::Export { dir } => export(storage.as_ref(), &dir).await?,

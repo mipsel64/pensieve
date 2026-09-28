@@ -15,6 +15,8 @@ SYSTEMD_DIR := $(or $(XDG_CONFIG_HOME),$(HOME)/.config)/systemd/user
 .PHONY: build install setup restart status clean ensure-config ensure-os
 
 build:
+	npm ci --prefix server/web
+	npm --prefix server/web run build
 	cargo build --locked --release --target-dir "$(CARGO_TARGET_DIR)"
 
 install: build

@@ -3,11 +3,12 @@ use std::sync::Arc;
 use axum::{
     Json, Router,
     extract::{Path, Query, Request, State},
-    http::{HeaderMap, HeaderValue, StatusCode, header},
+    http::{HeaderMap, HeaderValue, StatusCode, Uri, header},
     middleware::{self, Next},
     response::{IntoResponse, Response},
     routing::{get, post},
 };
+use include_dir::{Dir, include_dir};
 use serde::Deserialize;
 use serde_json::{Value, json};
 use subtle::ConstantTimeEq;
@@ -21,6 +22,7 @@ use crate::{
 /// Candidate pool handed to the reranker; recall is bounded by keyword search at this depth.
 const CANDIDATES: usize = 40;
 const CSP: &str = "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; frame-ancestors 'none'";
+static WEB: Dir<'_> = include_dir!("$CARGO_MANIFEST_DIR/web/dist");
 
 pub struct App {
     pub storage: Arc<dyn Storage>,
@@ -36,34 +38,38 @@ pub fn router(app: Arc<App>) -> Router {
         .route("/pages/{title}/edit", post(edit))
         .route_layer(middleware::from_fn_with_state(app.clone(), auth));
     Router::new()
-        .route(
-            "/",
-            get(|| async {
-                asset(
-                    "text/html; charset=utf-8",
-                    include_str!("../web/index.html"),
-                )
-            }),
-        )
-        .route(
-            "/app.js",
-            get(|| async { asset("text/javascript", include_str!("../web/app.js")) }),
-        )
-        .route(
-            "/force-graph.min.js",
-            get(|| async { asset("text/javascript", include_str!("../web/force-graph.min.js")) }),
-        )
         .nest("/api", api)
+        .fallback(asset)
         .with_state(app)
 }
 
-fn asset(content_type: &'static str, body: &'static str) -> Response {
+async fn asset(uri: Uri) -> Response {
+    let path = uri.path().trim_start_matches('/');
+    let path = if path.is_empty() { "index.html" } else { path };
+    let Some(file) = WEB.get_file(path) else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
+    let content_type = match path.rsplit('.').next() {
+        Some("html") => "text/html; charset=utf-8",
+        Some("js") => "text/javascript; charset=utf-8",
+        Some("css") => "text/css; charset=utf-8",
+        Some("svg") => "image/svg+xml",
+        _ => "application/octet-stream",
+    };
+    // Vite puts a content hash in every file name under assets/.
+    let cache = if path.starts_with("assets/") {
+        "public, max-age=31536000, immutable"
+    } else {
+        "no-cache"
+    };
     (
         [
             (header::CONTENT_TYPE, content_type),
+            (header::CACHE_CONTROL, cache),
             (header::CONTENT_SECURITY_POLICY, CSP),
+            (header::X_CONTENT_TYPE_OPTIONS, "nosniff"),
         ],
-        body,
+        file.contents(),
     )
         .into_response()
 }

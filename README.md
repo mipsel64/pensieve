@@ -9,6 +9,8 @@ Search uses SQLite FTS5 BM25. With a Jev key, the top 40 BM25 matches are sent t
 
 ## Server
 
+Building needs Rust and Node 22.18 or newer. The web UI (React and Vite, in `server/web`) is compiled into `pensieve-server`, so run `make` once before `cargo build` or `cargo test`.
+
 ```sh
 make setup      # installs pensieve-server and pensieve to ~/.local/bin and starts the service
 ```
@@ -32,6 +34,20 @@ On first run, `make setup` creates `~/.config/pensieve/environment` (mode 0600) 
 Import an existing wiki once with `pensieve-server import ~/vaults/wiki`; it skips `index.md` and `log.md`. `pensieve-server export <dir>` writes every page back out as `<title>.md`. To reach the server from other devices, keep it on loopback and run `tailscale serve --bg 7878`. On Linux, run `loginctl enable-linger` so the service keeps running after you log out.
 
 New backends implement `storage::Storage` and must pass `storage::conformance::check`. New rerankers implement `rerank::Reranker`.
+
+## Docker
+
+The image contains only `pensieve-server` and runs as a non-root user. The database is stored in the `/var/lib/pensieve` volume.
+
+```sh
+docker build -t pensieve .
+docker run --rm -v pensieve:/var/lib/pensieve -v ~/vaults/wiki:/wiki:ro pensieve import /wiki   # optional
+docker run -d --name pensieve --restart unless-stopped \
+  -p 127.0.0.1:7878:7878 -v pensieve:/var/lib/pensieve \
+  --env-file ~/.config/pensieve/environment pensieve
+```
+
+The env file needs `PENSIEVE_TOKEN` and optionally the Jev settings. Leave `PENSIEVE_DB` and `PENSIEVE_LISTEN` unset; the image sets them. Keep the `127.0.0.1:` prefix on `-p`: without it, Docker publishes the port on every interface, and on Linux that bypasses the host firewall. Then run `tailscale serve --bg 7878` on the host as above.
 
 ## Agents
 
