@@ -13,17 +13,17 @@ COPY server/src ./server/src
 COPY --from=web /web/dist ./server/web/dist
 ARG GIT_SHA=unknown
 ARG BUILD_DATE
-RUN cargo build --locked --release --bin pensieve-server \
+RUN cargo build --locked --release --bin pensieve \
     && install -d -m 0700 /var/lib/pensieve
 
 FROM gcr.io/distroless/cc-debian12:nonroot
-COPY --from=build /build/target/release/pensieve-server /usr/local/bin/pensieve-server
+COPY --from=build /build/target/release/pensieve /usr/local/bin/pensieve
 COPY --from=build --chown=65532:65532 /var/lib/pensieve /var/lib/pensieve
 COPY LICENSE /usr/share/licenses/pensieve/LICENSE
 ENV HOME=/home/nonroot PENSIEVE_DB=/var/lib/pensieve/pensieve.db PENSIEVE_LISTEN=0.0.0.0:7878
 USER 65532:65532
-RUN ["/usr/local/bin/pensieve-server", "--version"]
+RUN ["/usr/local/bin/pensieve", "--version"]
 VOLUME /var/lib/pensieve
 EXPOSE 7878
-ENTRYPOINT ["/usr/local/bin/pensieve-server"]
+ENTRYPOINT ["/usr/local/bin/pensieve"]
 CMD ["serve"]
