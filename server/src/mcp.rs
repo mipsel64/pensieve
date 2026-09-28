@@ -210,8 +210,7 @@ async fn recall(app: &App, args: Value) -> Result<String, String> {
     #[derive(Deserialize)]
     struct Args {
         question: String,
-        #[serde(default)]
-        keywords: Vec<String>,
+        keywords: Option<Vec<String>>,
         budget: Option<usize>,
     }
     let Args {
@@ -224,7 +223,7 @@ async fn recall(app: &App, args: Value) -> Result<String, String> {
         app.storage.as_ref(),
         app.reranker.as_deref(),
         &question,
-        &keywords,
+        &keywords.unwrap_or_default(),
         budget,
     )
     .await
@@ -537,8 +536,8 @@ fn tools() -> Value {
                 "type": "object",
                 "properties": {
                     "question": { "type": "string", "description": "What you need to know, as a natural-language question." },
-                    "keywords": { "type": "array", "items": { "type": "string" }, "description": "3-8 extra search terms; multi-word terms match as phrases." },
-                    "budget": { "type": "integer", "minimum": 200, "maximum": MAX_BUDGET, "default": DEFAULT_BUDGET, "description": "Approximate tokens of passages to return." }
+                    "keywords": { "type": ["array", "null"], "items": { "type": "string" }, "description": "3-8 extra search terms; multi-word terms match as phrases." },
+                    "budget": { "type": ["integer", "null"], "minimum": 200, "maximum": MAX_BUDGET, "default": DEFAULT_BUDGET, "description": "Approximate tokens of passages to return." }
                 },
                 "required": ["question"]
             },
@@ -552,7 +551,7 @@ fn tools() -> Value {
                 "type": "object",
                 "properties": {
                     "query": { "type": "string" },
-                    "limit": { "type": "integer", "minimum": 1, "maximum": 50, "default": 10 }
+                    "limit": { "type": ["integer", "null"], "minimum": 1, "maximum": 50, "default": 10 }
                 },
                 "required": ["query"]
             },
@@ -565,7 +564,7 @@ fn tools() -> Value {
                 "type": "object",
                 "properties": {
                     "title": { "type": "string" },
-                    "section": { "type": "string", "description": "Section heading, as listed under Sections." }
+                    "section": { "type": ["string", "null"], "description": "Section heading, as listed under Sections." }
                 },
                 "required": ["title"]
             },
@@ -581,7 +580,7 @@ fn tools() -> Value {
                     "title": { "type": "string" },
                     "content": { "type": "string", "description": "Full Markdown, starting with frontmatter." },
                     "summary": { "type": "string", "description": "One line: what changed and why." },
-                    "base_rev": { "type": "integer", "description": "Current rev of the page; omit when creating." }
+                    "base_rev": { "type": ["integer", "null"], "description": "Current rev of the page; omit when creating." }
                 },
                 "required": ["title", "content", "summary"]
             }
@@ -595,10 +594,10 @@ fn tools() -> Value {
                 "properties": {
                     "title": { "type": "string" },
                     "summary": { "type": "string", "description": "One line: what changed and why." },
-                    "old_text": { "type": "string" },
-                    "new_text": { "type": "string" },
-                    "section": { "type": "string", "description": "Section heading to append to." },
-                    "append": { "type": "string", "description": "Markdown to add at the end of the section." }
+                    "old_text": { "type": ["string", "null"] },
+                    "new_text": { "type": ["string", "null"] },
+                    "section": { "type": ["string", "null"], "description": "Section heading to append to." },
+                    "append": { "type": ["string", "null"], "description": "Markdown to add at the end of the section." }
                 },
                 "required": ["title", "summary"]
             }
@@ -790,5 +789,43 @@ mod tests {
             .unwrap();
         assert_eq!(bad["error"]["code"], -32600);
         assert_eq!(call(&app, "nope", json!({})).await["error"]["code"], -32601);
+    }
+
+    #[tokio::test]
+    async fn null_optional_arguments_mean_omitted() {
+        let storage = Arc::new(SqliteStorage::open(Path::new(":memory:")).unwrap());
+        let app = App {
+            storage,
+            reranker: None,
+            token: String::new(),
+        };
+        let content = "---\ntype: topic\n---\nRedis intro.\n\n## Eviction\nLRU sampling.\n";
+        let (text, error) = tool(
+            &app,
+            "write",
+            json!({ "title": "Redis", "content": content, "summary": "Create", "base_rev": null }),
+        )
+        .await;
+        assert!(!error, "{text}");
+
+        let (text, error) = tool(&app, "read", json!({ "title": "Redis", "section": null })).await;
+        assert!(
+            !error && text.contains("Redis intro.") && text.contains("LRU sampling."),
+            "{text}"
+        );
+
+        let (text, error) = tool(&app, "search", json!({ "query": "redis", "limit": null })).await;
+        assert!(!error && text.contains("- Redis"), "{text}");
+
+        let (text, error) = tool(
+            &app,
+            "recall",
+            json!({ "question": "redis eviction", "keywords": null, "budget": null }),
+        )
+        .await;
+        assert!(!error && text.contains("LRU sampling."), "{text}");
+
+        let (text, error) = tool(&app, "edit", json!({ "title": "Redis", "summary": "Fix", "old_text": "LRU", "new_text": "Approximate LRU", "section": null, "append": null })).await;
+        assert!(!error && text.contains("rev 2"), "{text}");
     }
 }
