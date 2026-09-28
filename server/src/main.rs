@@ -30,7 +30,7 @@ use crate::{
 type CliResult = Result<(), Box<dyn std::error::Error>>;
 
 #[derive(Parser)]
-#[command(version, about = "Pensieve shared agent memory server")]
+#[command(version = env!("PENSIEVE_VERSION"), about = "Pensieve shared agent memory server")]
 struct Cli {
     /// TOML config file [default: ~/.config/pensieve/config.toml, optional]
     #[arg(short, long, env = "PENSIEVE_CONFIG")]
