@@ -1,126 +1,264 @@
 import { useContext, useEffect, useRef, useState } from 'react';
-import { Loader2, MessageSquareText, Search as SearchIcon } from 'lucide-react';
+import { FileText, Loader2, MessageSquareText, Search as SearchIcon, Sparkles, X } from 'lucide-react';
 import { api, query, Unauthorized } from './api.js';
 import { href } from './router.js';
-import { AuthContext, Empty, ErrorNote, formatNumber, Markdown, PageLink, RelTime, TypeBadge } from './ui.jsx';
+import { AuthContext, ErrorNote, formatNumber, KIND_COLORS, Logo, Markdown, PageLink, RelTime, TypeBadge } from './ui.jsx';
+import { useSettings } from './settings.jsx';
+
+// The server drops everything but letters and digits, so `???` would otherwise list recent pages as matches.
+const searchable = (q) => /[\p{L}\p{N}]/u.test(q);
 
 export function Search({ params }) {
-  const lock = useContext(AuthContext);
-  const q = params.q ?? '';
-  const mode = params.mode === 'ask' ? 'ask' : 'keywords';
-  const jev = params.jev !== '0';
-  // Results remember what they answer: for one render after a change, the previous results are still here.
-  const key = `${mode}\n${jev}\n${q}`;
-  const [result, setResult] = useState({ loading: false, error: null, data: null, key });
-  const latest = useRef(0);
+  const { settings } = useSettings();
+  const q = (params.q ?? '').trim();
+  const mode = (params.mode ?? settings.search.mode) === 'ask' ? 'ask' : 'keywords';
+  const rerank = params.jev ? params.jev !== '0' : settings.search.rerank;
+  const go = (value, nextMode = mode) => {
+    if (value.trim()) location.hash = href('search', { ...params, q: value.trim(), mode: nextMode });
+  };
 
-  useEffect(() => {
-    if (!q.trim()) {
-      latest.current++;
-      setResult({ loading: false, error: null, data: null, key });
-      return;
-    }
-    // Only the newest query may update the results, so a slow response can't replace a newer one.
-    const request = ++latest.current;
-    setResult((r) => ({ ...r, loading: true, error: null }));
-    const path = mode === 'ask' ? `/recall${query({ q, budget: 3000 })}` : `/search${query({ q, limit: 30, rerank: jev })}`;
-    api(path)
-      .then((data) => request === latest.current && setResult({ loading: false, error: null, data, key }))
-      .catch((error) => {
-        if (request !== latest.current) return;
-        if (error instanceof Unauthorized) lock();
-        setResult({ loading: false, error, data: null, key });
-      });
-  }, [q, mode, jev, key, lock]);
+  if (!q) {
+    return (
+      <div className="search-home">
+        <div className="search-hero">
+          <Logo size={84} />
+          <h1>Pensieve</h1>
+        </div>
+        <SearchBox initial="" big autoFocus onSubmit={(value) => go(value, settings.search.mode)}>
+          {(value) => (
+            <div className="search-actions">
+              <button type="button" className="pill" onClick={() => go(value, 'keywords')}>
+                Search memory
+              </button>
+              <button type="button" className="pill" onClick={() => go(value, 'ask')}>
+                Ask a question
+              </button>
+            </div>
+          )}
+        </SearchBox>
+        <p className="search-hint">
+          <strong>Search</strong> ranks whole pages by their words. <strong>Ask</strong> returns the passages an agent's recall would get.
+        </p>
+      </div>
+    );
+  }
 
   const tab = (value, label, Icon) => (
-    <a className="tab" href={href('search', { ...params, mode: value })} aria-current={mode === value ? 'page' : undefined}>
+    <a className="serp-tab" href={href('search', { ...params, mode: value })} aria-current={mode === value ? 'page' : undefined}>
       <Icon size={16} aria-hidden="true" />
       {label}
     </a>
   );
 
   return (
-    <div className="view">
-      <header className="view-header">
-        <h1>{q ? `“${q}”` : 'Search'}</h1>
-        <p className="muted">{mode === 'ask' ? 'Passages the recall tool would give an agent, ranked and packed into a token budget.' : 'Pages whose title or text contains the words.'}</p>
+    <div className="serp">
+      <header className="serp-header">
+        <a className="serp-brand" href={href('search')} aria-label="New search">
+          <Logo size={30} />
+          <span>Pensieve</span>
+        </a>
+        <SearchBox key={q} initial={q} onSubmit={(value) => go(value)} />
       </header>
-
-      <div className="toolbar">
-        <nav className="tabs" aria-label="Search mode">
-          {tab('keywords', 'Keywords', SearchIcon)}
+      <div className="serp-tabs">
+        <nav aria-label="Search mode">
+          {tab('keywords', 'Pages', FileText)}
           {tab('ask', 'Ask', MessageSquareText)}
         </nav>
         {mode === 'keywords' && (
           <label className="checkbox">
-            <input type="checkbox" checked={jev} onChange={(e) => (location.hash = href('search', { ...params, jev: e.target.checked ? undefined : '0' }))} />
+            <input type="checkbox" checked={rerank} onChange={(e) => (location.hash = href('search', { ...params, jev: e.target.checked ? '1' : '0' }))} />
             Rerank with Jev
           </label>
         )}
       </div>
-
-      {!q.trim() && <Empty>Type in the search box at the top. Press / to jump there.</Empty>}
-      {result.loading && (
-        <div className="state" role="status">
-          <Loader2 className="spin" size={18} aria-hidden="true" />
-          {mode === 'ask' ? 'Recalling…' : 'Searching…'}
-        </div>
-      )}
-      {result.error && <ErrorNote error={result.error} />}
-      {result.data && !result.loading && result.key === key && (mode === 'ask' ? <Answer data={result.data} /> : <Hits data={result.data} />)}
+      <Results q={q} mode={mode} rerank={rerank} params={params} />
     </div>
   );
 }
 
-function Hits({ data }) {
-  if (!data.hits.length) return <Empty>No pages match.</Empty>;
+function SearchBox({ initial, big, autoFocus, onSubmit, children }) {
+  const [value, setValue] = useState(initial);
+  const input = useRef(null);
+  return (
+    <form
+      className={`search-form${big ? ' big' : ''}`}
+      role="search"
+      onSubmit={(e) => {
+        e.preventDefault();
+        onSubmit(value);
+      }}
+    >
+      <div className="search-box">
+        <SearchIcon size={big ? 20 : 18} aria-hidden="true" />
+        <input
+          ref={input}
+          id="search-q"
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          aria-label="Search memory"
+          placeholder={big ? 'Search memory or ask a question' : undefined}
+          autoComplete="off"
+          enterKeyHint="search"
+          autoFocus={autoFocus}
+        />
+        {value && (
+          <button
+            type="button"
+            className="icon-button"
+            aria-label="Clear search"
+            onClick={() => {
+              setValue('');
+              input.current.focus();
+            }}
+          >
+            <X size={18} aria-hidden="true" />
+          </button>
+        )}
+      </div>
+      {children?.(value)}
+    </form>
+  );
+}
+
+function Results({ q, mode, rerank, params }) {
+  const lock = useContext(AuthContext);
+  // Results remember what they answer: for one render after a change, the previous results are still here.
+  const key = `${mode}\n${rerank}\n${q}`;
+  const [result, setResult] = useState({ loading: false, error: null, data: null, key: null });
+  const valid = searchable(q);
+
+  useEffect(() => {
+    if (!valid) return;
+    let current = true;
+    const started = performance.now();
+    setResult((r) => ({ ...r, loading: true, error: null }));
+    const path = mode === 'ask' ? `/recall${query({ q })}` : `/search${query({ q, limit: 30, rerank })}`;
+    api(path)
+      .then((data) => current && setResult({ loading: false, error: null, data, key, seconds: (performance.now() - started) / 1000 }))
+      .catch((error) => {
+        if (!current) return;
+        if (error instanceof Unauthorized) lock();
+        setResult({ loading: false, error, data: null, key });
+      });
+    return () => {
+      current = false;
+    };
+  }, [q, mode, rerank, key, valid, lock]);
+
+  if (!valid) return <p className="serp-note">Type a word or a name to search for.</p>;
+  const fresh = result.key === key && !result.loading;
+  return (
+    <div className="serp-body" aria-busy={result.loading}>
+      {result.loading && (
+        <p className="serp-stats" role="status">
+          <Loader2 className="spin" size={15} aria-hidden="true" /> {mode === 'ask' ? 'Recalling…' : 'Searching…'}
+        </p>
+      )}
+      {result.error && fresh && <ErrorNote error={result.error} />}
+      {result.data && fresh && (mode === 'ask' ? <Answer data={result.data} seconds={result.seconds} /> : <Hits data={result.data} seconds={result.seconds} q={q} params={params} />)}
+    </div>
+  );
+}
+
+const seconds = (s) => `${s.toFixed(2)} seconds`;
+
+function Hits({ data, seconds: took, q, params }) {
+  if (!data.hits.length) {
+    return (
+      <div className="serp-empty">
+        <p>
+          No pages match <strong>{q}</strong>.
+        </p>
+        <ul>
+          <li>Try different or fewer words.</li>
+          <li>
+            Or <a href={href('search', { ...params, mode: 'ask' })}>ask it as a question</a>: recall matches sections rather than whole pages.
+          </li>
+        </ul>
+      </div>
+    );
+  }
   return (
     <>
-      <p className="muted small" role="status">
-        {data.hits.length} pages, ranked by {data.reranked ? 'Jev relevance' : 'BM25'}
+      <p className="serp-stats" role="status">
+        {data.hits.length} {data.hits.length === 1 ? 'page' : 'pages'} ({seconds(took)}) · ranked by {data.reranked ? 'Jev relevance' : 'BM25'}
       </p>
-      <ol className="results">
+      <ol className="serp-list">
         {data.hits.map((hit) => (
-          <li key={hit.title}>
-            <div className="result-head">
-              <PageLink title={hit.title} />
-              <span className="muted small">
-                rev {hit.rev} · updated <RelTime iso={hit.updated_at} />
-                {data.reranked && <> · relevance {hit.score.toFixed(2)}</>}
+          <li key={hit.title} className="serp-item">
+            <div className="serp-source">
+              <span className="serp-icon" style={{ '--kind': KIND_COLORS[hit.kind] ?? KIND_COLORS.untyped }} aria-hidden="true">
+                {(hit.kind ?? 'page')[0].toUpperCase()}
+              </span>
+              <span className="serp-site">
+                <span>{hit.kind ?? 'untyped'}</span>
+                <span className="serp-crumb">
+                  memory › rev {hit.rev}
+                  {data.reranked && <> · relevance {hit.score.toFixed(2)}</>}
+                </span>
               </span>
             </div>
-            <p className="snippet">
+            <h3>
+              <PageLink title={hit.title} />
+            </h3>
+            <p className="serp-snippet">
+              <span className="serp-date">
+                <RelTime iso={hit.updated_at} /> —{' '}
+              </span>
               {hit.snippet.split(/[«»]/).map((part, i) => (i % 2 ? <mark key={i}>{part}</mark> : part))}
             </p>
           </li>
         ))}
       </ol>
+      {data.hits.length === 30 && <p className="serp-note">Showing the 30 best matches. Add words to narrow the search.</p>}
     </>
   );
 }
 
-function Answer({ data }) {
-  const pages = new Set(data.passages.map((p) => p.title));
+function Answer({ data, seconds: took }) {
   return (
     <>
-      <p className="muted small" role="status">
-        {data.passages.length
-          ? `${data.passages.length} passages from ${pages.size} pages, about ${formatNumber(data.tokens)} tokens, ranked by ${data.reranked ? 'Jev relevance' : 'BM25'}`
-          : 'Nothing in memory answers this.'}
+      {data.passages.length ? <Recall data={data} took={took} /> : <p className="serp-note">Nothing in memory answers this. Try other words, or search for a page title.</p>}
+      {data.leads.length > 0 && (
+        <section className="related" aria-labelledby="related-title">
+          <h2 id="related-title">Related pages</h2>
+          <ul>
+            {data.leads.map((t) => (
+              <li key={t}>
+                <PageLink title={t}>
+                  <SearchIcon size={15} aria-hidden="true" /> {t}
+                </PageLink>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+    </>
+  );
+}
+
+function Recall({ data, took }) {
+  const pages = new Set(data.passages.map((p) => p.title));
+  return (
+    <section className="recall-box" aria-labelledby="recall-title">
+      <h2 id="recall-title">
+        <Sparkles size={17} aria-hidden="true" /> What an agent would recall
+      </h2>
+      <p className="serp-stats" role="status">
+        {data.passages.length} passages from {pages.size} {pages.size === 1 ? 'page' : 'pages'} · about {formatNumber(data.tokens)} tokens ({seconds(took)}) · ranked by{' '}
+        {data.reranked ? 'Jev relevance' : 'BM25'}
       </p>
       <ol className="passages">
         {data.passages.map((p) => (
-          <li key={`${p.title}:${p.ord}`} className="card passage">
+          <li key={`${p.title}:${p.ord}`} className="passage">
             <header className="passage-head">
-              <h2>
+              <h3>
                 <PageLink title={p.title} />
                 {p.heading && <span className="muted"> › {p.heading}</span>}
-              </h2>
+              </h3>
               <div className="meta-row">
                 <TypeBadge kind={p.kind} />
                 {p.confidence && <span className="chip">confidence {p.confidence}</span>}
-                <span>rev {p.rev}</span>
                 <span>
                   updated <RelTime iso={p.updated_at} />
                 </span>
@@ -133,17 +271,6 @@ function Answer({ data }) {
           </li>
         ))}
       </ol>
-      {data.leads.length > 0 && (
-        <p className="leads">
-          <span className="muted">More pages: </span>
-          {data.leads.map((t, i) => (
-            <span key={t}>
-              {i > 0 && ', '}
-              <PageLink title={t} />
-            </span>
-          ))}
-        </p>
-      )}
-    </>
+    </section>
   );
 }

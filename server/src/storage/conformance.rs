@@ -197,4 +197,12 @@ pub(crate) async fn check(storage: &dyn Storage) {
     );
 
     assert_eq!(storage.pages().await.unwrap().len(), 2);
+
+    assert_eq!(storage.settings().await.unwrap(), None);
+    storage.save_settings(r#"{"a":1}"#).await.unwrap();
+    storage.save_settings(r#"{"a":2}"#).await.unwrap();
+    assert_eq!(
+        storage.settings().await.unwrap().as_deref(),
+        Some(r#"{"a":2}"#)
+    );
 }

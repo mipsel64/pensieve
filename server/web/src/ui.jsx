@@ -6,16 +6,17 @@ import { api, Unauthorized } from './api.js';
 import { RouteContext, usePageHref } from './router.js';
 
 export const KINDS = ['topic', 'entity', 'source', 'synthesis', 'runbook', 'incident', 'audit'];
+// Muted like the mist, but far enough apart in hue to tell the types apart.
 export const KIND_COLORS = {
-  topic: '#60a5fa',
-  entity: '#a78bfa',
-  source: '#f59e0b',
-  synthesis: '#2dd4bf',
-  runbook: '#22c55e',
-  incident: '#f87171',
-  audit: '#f472b6',
-  untyped: '#94a3b8',
-  missing: '#475569',
+  topic: '#8fb6dc',
+  entity: '#b3a4e0',
+  source: '#d9bd86',
+  synthesis: '#87cbbd',
+  runbook: '#a3c98f',
+  incident: '#df9696',
+  audit: '#d59fc2',
+  untyped: '#8d9797',
+  missing: '#5c6868',
 };
 
 export const AuthContext = createContext(() => {});
@@ -245,10 +246,17 @@ function unquoteList(value) {
 
 export function Logo({ size = 28 }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 32 32" aria-hidden="true">
-      <circle cx="16" cy="16" r="14" fill="none" stroke="currentColor" strokeWidth="2.5" opacity="0.35" />
-      <path d="M9 17c2.5-5 11.5-5 14 0M11.5 21c1.8-2.6 7.2-2.6 9 0" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" />
-      <circle cx="16" cy="11" r="2.2" fill="currentColor" />
+    <svg className="logo" width={size} height={size} viewBox="0 0 32 32" aria-hidden="true">
+      <path
+        d="M12.8 13.2c-2.4-2.6.2-4.7 2.3-6.4 1.7-1.4 1.3-3.3-.3-4.3M18.6 13.4c1.7-2-.1-3.6 1.5-5.4.9-1 2.1-1.3 3.1-1"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+        opacity="0.55"
+      />
+      <ellipse cx="16" cy="16" rx="12.5" ry="3.2" fill="currentColor" />
+      <path d="M3.5 16.6C4.6 22.7 9.8 27 16 27s11.4-4.3 12.5-10.4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" opacity="0.7" />
     </svg>
   );
 }

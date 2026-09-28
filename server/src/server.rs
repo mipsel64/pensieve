@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use axum::{
     Json, Router,
-    extract::{Path, Query, Request, State},
+    extract::{DefaultBodyLimit, Path, Query, Request, State},
     http::{HeaderMap, HeaderValue, Method, StatusCode, Uri, header},
     middleware::{self, Next},
     response::{IntoResponse, Response},
@@ -40,7 +40,12 @@ pub fn router(app: Arc<App>) -> Router {
         .route("/history", get(history))
         .route("/stats", get(stats))
         .route("/recall", get(recall))
-        .route("/session", get(|| async { StatusCode::NO_CONTENT }))
+        .route(
+            "/settings",
+            get(settings)
+                .put(save_settings)
+                .layer(DefaultBodyLimit::max(MAX_SETTINGS_BYTES)),
+        )
         .route("/mcp", post(mcp))
         .route_layer(middleware::from_fn_with_state(app.clone(), auth))
         .route("/login", post(login))
@@ -92,7 +97,8 @@ async fn asset(uri: Uri) -> Response {
 }
 
 /// Agents authenticate with the bearer token; the web UI with a session cookie, which only
-/// authorizes reads so a cross-site form can't write with it.
+/// authorizes reads so a cross-site form can't write with it. The one exception, the UI's own
+/// settings, takes only a JSON body, which a cross-site page can't send without CORS approval.
 async fn auth(State(app): State<Arc<App>>, request: Request, next: Next) -> Response {
     let headers = request.headers();
     let bearer = headers
@@ -102,7 +108,8 @@ async fn auth(State(app): State<Arc<App>>, request: Request, next: Next) -> Resp
         .filter(|(scheme, _)| scheme.eq_ignore_ascii_case("bearer"))
         .map(|(_, token)| token.trim())
         .is_some_and(|token| bool::from(token.as_bytes().ct_eq(app.token.as_bytes())));
-    let read = matches!(*request.method(), Method::GET | Method::HEAD);
+    let read = matches!(*request.method(), Method::GET | Method::HEAD)
+        || request.uri().path() == "/settings";
     if !(bearer || (read && session::valid(&app.token, headers))) {
         return StatusCode::UNAUTHORIZED.into_response();
     }
@@ -111,6 +118,30 @@ async fn auth(State(app): State<Arc<App>>, request: Request, next: Next) -> Resp
         .headers_mut()
         .insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
     response
+}
+
+const MAX_SETTINGS_BYTES: usize = 16 * 1024;
+
+async fn settings(State(app): State<Arc<App>>) -> Result<Response> {
+    let json = app.storage.settings().await?.unwrap_or_else(|| "{}".into());
+    Ok(([(header::CONTENT_TYPE, "application/json")], json).into_response())
+}
+
+async fn save_settings(State(app): State<Arc<App>>, Json(value): Json<Value>) -> Response {
+    let json = value.to_string();
+    if !value.is_object() || json.len() > MAX_SETTINGS_BYTES {
+        return (
+            StatusCode::BAD_REQUEST,
+            format!(
+                "cannot save settings: send a JSON object of at most {MAX_SETTINGS_BYTES} bytes"
+            ),
+        )
+            .into_response();
+    }
+    match app.storage.save_settings(&json).await {
+        Ok(()) => StatusCode::NO_CONTENT.into_response(),
+        Err(e) => e.into_response(),
+    }
 }
 
 #[derive(Deserialize)]
@@ -396,11 +427,51 @@ mod tests {
             after["visited_at"].is_string(),
             "only the second read counted"
         );
-        assert_eq!(
-            get("/session").await.unwrap().status(),
-            StatusCode::NO_CONTENT
-        );
         assert_eq!(get("/stats").await.unwrap().status(), StatusCode::OK);
+
+        let save = |body: Value| {
+            http.put(format!("{base}/settings"))
+                .header(header::COOKIE, &cookie)
+                .json(&body)
+                .send()
+        };
+        assert_eq!(
+            save(json!({ "graph": { "arrows": true } }))
+                .await
+                .unwrap()
+                .status(),
+            StatusCode::NO_CONTENT,
+            "the UI saves its settings with the cookie"
+        );
+        let saved: Value = get("/settings").await.unwrap().json().await.unwrap();
+        assert_eq!(saved, json!({ "graph": { "arrows": true } }));
+        assert_eq!(
+            save(json!([1])).await.unwrap().status(),
+            StatusCode::BAD_REQUEST
+        );
+        let form = http
+            .put(format!("{base}/settings"))
+            .header(header::COOKIE, &cookie)
+            .header(header::CONTENT_TYPE, "application/x-www-form-urlencoded")
+            .body("graph=1")
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(form.status(), StatusCode::UNSUPPORTED_MEDIA_TYPE);
+        let padded = format!("{{{}}}", " ".repeat(MAX_SETTINGS_BYTES));
+        let big = http
+            .put(format!("{base}/settings"))
+            .header(header::COOKIE, &cookie)
+            .header(header::CONTENT_TYPE, "application/json")
+            .body(padded)
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(
+            big.status(),
+            StatusCode::PAYLOAD_TOO_LARGE,
+            "the limit is on the body, not the parsed value"
+        );
         assert_eq!(
             http.get(format!("{base}/stats"))
                 .send()
