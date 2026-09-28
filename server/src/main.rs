@@ -5,6 +5,7 @@ mod mcp;
 mod rerank;
 mod retrieval;
 mod server;
+mod session;
 mod storage;
 
 use std::{

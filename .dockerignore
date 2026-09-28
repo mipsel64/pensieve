@@ -13,5 +13,6 @@
 !server/web/package.json
 !server/web/package-lock.json
 !server/web/index.html
+!server/web/vite.config.js
 !server/web/src/
 !server/web/src/**

@@ -16,6 +16,10 @@ const MAX_LEADS: usize = 8;
 const EXCERPT_BYTES: usize = 6000;
 pub const DEFAULT_BUDGET: usize = 2000;
 pub const MAX_BUDGET: usize = 8000;
+/// Input caps: queries are a sentence plus a few keywords, and the question is sent to the reranker as is.
+const MAX_QUERY_BYTES: usize = 1000;
+pub const MAX_KEYWORDS: usize = 16;
+const MAX_KEYWORD_BYTES: usize = 100;
 /// Question words too common to signal relevance; with any-term matching they would match every page.
 const STOPWORDS: &[&str] = &[
     "a", "about", "an", "and", "any", "are", "as", "at", "be", "but", "by", "can", "could", "did",
@@ -47,6 +51,7 @@ pub async fn search(
     query: &str,
     limit: usize,
 ) -> Result<Searched> {
+    let query = truncate(query, MAX_QUERY_BYTES);
     let reranker = reranker.filter(|_| !query.trim().is_empty());
     let mut hits = storage
         .search(
@@ -99,12 +104,19 @@ pub async fn recall(
     keywords: &[String],
     budget: usize,
 ) -> Result<Recalled> {
-    let mut terms: Vec<_> = question
-        .split(|c: char| !c.is_alphanumeric())
-        .filter(|w| !w.is_empty() && !STOPWORDS.contains(&w.to_lowercase().as_str()))
-        .map(str::to_owned)
+    let question = truncate(question, MAX_QUERY_BYTES);
+    // Keywords first: the query keeps only its first terms, and the agent's keywords are the most deliberate.
+    let mut terms: Vec<_> = keywords
+        .iter()
+        .take(MAX_KEYWORDS)
+        .map(|k| truncate(k, MAX_KEYWORD_BYTES).to_owned())
         .collect();
-    terms.extend(keywords.iter().cloned());
+    terms.extend(
+        question
+            .split(|c: char| !c.is_alphanumeric())
+            .filter(|w| !w.is_empty() && !STOPWORDS.contains(&w.to_lowercase().as_str()))
+            .map(str::to_owned),
+    );
     let matches = storage.search_sections(&terms, CANDIDATES).await?;
 
     let mut ranked = matches.clone();

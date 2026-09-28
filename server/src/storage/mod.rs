@@ -179,7 +179,7 @@ pub struct Hit {
 }
 
 /// One section of a page, as returned by `search_sections`.
-#[derive(Clone, Debug)]
+#[derive(Serialize, Clone, Debug)]
 pub struct Passage {
     pub title: String,
     pub heading: String,
@@ -225,6 +225,7 @@ pub struct Graph {
 pub struct Node {
     pub id: String,
     pub missing: bool,
+    pub kind: Option<String>,
 }
 
 #[derive(Serialize)]

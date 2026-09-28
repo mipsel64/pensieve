@@ -17,80 +17,7 @@ use crate::{
     markdown::{self, KINDS, Section},
 };
 
-const SCHEMA: &str = r#"
-PRAGMA journal_mode = WAL;
-PRAGMA foreign_keys = ON;
-
-CREATE TABLE IF NOT EXISTS pages (
-    id INTEGER PRIMARY KEY,
-    title TEXT NOT NULL UNIQUE COLLATE NOCASE,
-    content TEXT NOT NULL,
-    rev INTEGER NOT NULL,
-    updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
-    updated_by TEXT NOT NULL
-);
-
--- Every version ever written, including the current one.
-CREATE TABLE IF NOT EXISTS revisions (
-    title TEXT NOT NULL COLLATE NOCASE,
-    rev INTEGER NOT NULL,
-    content TEXT NOT NULL,
-    updated_at TEXT NOT NULL,
-    updated_by TEXT NOT NULL,
-    PRIMARY KEY (title, rev)
-);
-
--- dst is a title, not an id, so links to pages that don't exist yet are kept.
-CREATE TABLE IF NOT EXISTS links (
-    src INTEGER NOT NULL REFERENCES pages (id) ON DELETE CASCADE,
-    dst TEXT NOT NULL COLLATE NOCASE,
-    PRIMARY KEY (src, dst)
-);
-CREATE INDEX IF NOT EXISTS links_dst ON links (dst);
-
--- Kept out of pages so recording a read doesn't fire the FTS update trigger.
-CREATE TABLE IF NOT EXISTS visits (
-    page INTEGER PRIMARY KEY REFERENCES pages (id) ON DELETE CASCADE,
-    at TEXT NOT NULL
-);
-
--- Pages split at ##/### headings, for passage retrieval.
-CREATE TABLE IF NOT EXISTS sections (
-    id INTEGER PRIMARY KEY,
-    page INTEGER NOT NULL REFERENCES pages (id) ON DELETE CASCADE,
-    ord INTEGER NOT NULL,
-    title TEXT NOT NULL,
-    heading TEXT NOT NULL,
-    body TEXT NOT NULL,
-    UNIQUE (page, ord)
-);
-
-CREATE VIRTUAL TABLE IF NOT EXISTS pages_fts USING fts5 (
-    title, content, content = 'pages', content_rowid = 'id', tokenize = 'porter unicode61'
-);
-CREATE TRIGGER IF NOT EXISTS pages_ai AFTER INSERT ON pages BEGIN
-    INSERT INTO pages_fts (rowid, title, content) VALUES (new.id, new.title, new.content);
-END;
-CREATE TRIGGER IF NOT EXISTS pages_ad AFTER DELETE ON pages BEGIN
-    INSERT INTO pages_fts (pages_fts, rowid, title, content) VALUES ('delete', old.id, old.title, old.content);
-END;
-CREATE TRIGGER IF NOT EXISTS pages_au AFTER UPDATE ON pages BEGIN
-    INSERT INTO pages_fts (pages_fts, rowid, title, content) VALUES ('delete', old.id, old.title, old.content);
-    INSERT INTO pages_fts (rowid, title, content) VALUES (new.id, new.title, new.content);
-END;
-
-CREATE VIRTUAL TABLE IF NOT EXISTS sections_fts USING fts5 (
-    title, heading, body, content = 'sections', content_rowid = 'id', tokenize = 'porter unicode61'
-);
-CREATE TRIGGER IF NOT EXISTS sections_ai AFTER INSERT ON sections BEGIN
-    INSERT INTO sections_fts (rowid, title, heading, body) VALUES (new.id, new.title, new.heading, new.body);
-END;
-CREATE TRIGGER IF NOT EXISTS sections_ad AFTER DELETE ON sections BEGIN
-    INSERT INTO sections_fts (sections_fts, rowid, title, heading, body) VALUES ('delete', old.id, old.title, old.heading, old.body);
-END;
-"#;
-
-/// Applied in order on top of `SCHEMA`; `PRAGMA user_version` counts how many ran.
+/// Applied in order on top of `schema.sql`; `PRAGMA user_version` counts how many ran.
 /// Every migration is followed by a full reindex of derived data, so an empty entry is how to
 /// reindex existing databases after changing how pages are parsed.
 const MIGRATIONS: &[&str] = &["ALTER TABLE pages ADD COLUMN type TEXT;
@@ -110,7 +37,7 @@ impl SqliteStorage {
     pub fn open(path: &Path) -> Result<Self> {
         let mut conn = Connection::open(path)?;
         conn.busy_timeout(Duration::from_secs(5))?;
-        conn.execute_batch(SCHEMA)?;
+        conn.execute_batch(include_str!("schema.sql"))?;
         migrate(&mut conn)?;
         Ok(Self {
             conn: Arc::new(Mutex::new(conn)),
@@ -394,11 +321,12 @@ fn visit(conn: &Connection, title: &str) -> Result<()> {
 
 fn graph(conn: &Connection) -> Result<Graph> {
     let mut nodes: Vec<_> = conn
-        .prepare_cached("SELECT title FROM pages ORDER BY title")?
+        .prepare_cached("SELECT title, type FROM pages ORDER BY title")?
         .query_map([], |r| {
             Ok(Node {
                 id: r.get(0)?,
                 missing: false,
+                kind: r.get(1)?,
             })
         })?
         .collect::<rusqlite::Result<_>>()?;
@@ -431,7 +359,11 @@ fn graph(conn: &Connection) -> Result<Graph> {
             edge
         })
         .collect();
-    nodes.extend(missing.into_values().map(|id| Node { id, missing: true }));
+    nodes.extend(missing.into_values().map(|id| Node {
+        id,
+        missing: true,
+        kind: None,
+    }));
     Ok(Graph { nodes, links })
 }
 
@@ -490,7 +422,7 @@ fn stats(conn: &Connection) -> Result<Stats> {
     let authors = conn
         .prepare_cached(
             "SELECT updated_by, count(*), count(DISTINCT title), max(updated_at) FROM revisions
-             GROUP BY updated_by ORDER BY 4 DESC LIMIT 20",
+             GROUP BY updated_by ORDER BY 4 DESC LIMIT 200",
         )?
         .query_map([], |r| {
             Ok(Author {
@@ -560,15 +492,21 @@ fn hit(r: &Row) -> rusqlite::Result<Hit> {
 }
 
 /// Any-term match; each term's words become one quoted phrase, which keeps input out of FTS5 syntax.
+/// Bounds on one query, so a huge `q` can't make SQLite parse and run an enormous `OR`.
+const MAX_PHRASES: usize = 32;
+const MAX_PHRASE_WORDS: usize = 8;
+
 fn fts_query(terms: &[String]) -> Option<String> {
     let phrases: Vec<_> = terms
         .iter()
         .map(|term| {
             term.split(|c: char| !c.is_alphanumeric())
                 .filter(|w| !w.is_empty())
+                .take(MAX_PHRASE_WORDS)
                 .collect::<Vec<_>>()
         })
         .filter(|words| !words.is_empty())
+        .take(MAX_PHRASES)
         .map(|words| format!("\"{}\"", words.join(" ")))
         .collect();
     (!phrases.is_empty()).then(|| phrases.join(" OR "))
@@ -577,6 +515,15 @@ fn fts_query(terms: &[String]) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn fts_query_is_bounded() {
+        let many: Vec<_> = (0..100).map(|i| format!("w{i}")).collect();
+        let query = fts_query(&many).unwrap();
+        assert_eq!(query.matches(" OR ").count(), MAX_PHRASES - 1);
+        let long = fts_query(&[many.join(" ")]).unwrap();
+        assert_eq!(long.split(' ').count(), MAX_PHRASE_WORDS);
+    }
 
     #[tokio::test]
     async fn conformance_and_revisions() {

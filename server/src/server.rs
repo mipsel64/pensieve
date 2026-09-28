@@ -3,7 +3,7 @@ use std::sync::Arc;
 use axum::{
     Json, Router,
     extract::{Path, Query, Request, State},
-    http::{HeaderMap, HeaderValue, StatusCode, Uri, header},
+    http::{HeaderMap, HeaderValue, Method, StatusCode, Uri, header},
     middleware::{self, Next},
     response::{IntoResponse, Response},
     routing::{get, post},
@@ -17,7 +17,8 @@ use crate::{
     error::Result,
     mcp,
     rerank::Reranker,
-    retrieval,
+    retrieval::{self, DEFAULT_BUDGET, MAX_BUDGET},
+    session,
     storage::{Change, Graph, HistoryFilter, Page, Revision, Stats, Storage},
 };
 
@@ -38,8 +39,20 @@ pub fn router(app: Arc<App>) -> Router {
         .route("/pages/{title}/edit", post(edit))
         .route("/history", get(history))
         .route("/stats", get(stats))
+        .route("/recall", get(recall))
+        .route("/session", get(|| async { StatusCode::NO_CONTENT }))
         .route("/mcp", post(mcp))
-        .route_layer(middleware::from_fn_with_state(app.clone(), auth));
+        .route_layer(middleware::from_fn_with_state(app.clone(), auth))
+        .route("/login", post(login))
+        .route(
+            "/logout",
+            post(|| async {
+                (
+                    StatusCode::NO_CONTENT,
+                    [(header::SET_COOKIE, session::clear())],
+                )
+            }),
+        );
     Router::new()
         .nest("/api", api)
         .fallback(asset)
@@ -57,6 +70,7 @@ async fn asset(uri: Uri) -> Response {
         Some("js") => "text/javascript; charset=utf-8",
         Some("css") => "text/css; charset=utf-8",
         Some("svg") => "image/svg+xml",
+        Some("woff2") => "font/woff2",
         _ => "application/octet-stream",
     };
     // Vite puts a content hash in every file name under assets/.
@@ -77,16 +91,19 @@ async fn asset(uri: Uri) -> Response {
         .into_response()
 }
 
+/// Agents authenticate with the bearer token; the web UI with a session cookie, which only
+/// authorizes reads so a cross-site form can't write with it.
 async fn auth(State(app): State<Arc<App>>, request: Request, next: Next) -> Response {
-    let authorized = request
-        .headers()
+    let headers = request.headers();
+    let bearer = headers
         .get(header::AUTHORIZATION)
         .and_then(|v| v.to_str().ok())
         .and_then(|v| v.split_once(' '))
         .filter(|(scheme, _)| scheme.eq_ignore_ascii_case("bearer"))
         .map(|(_, token)| token.trim())
         .is_some_and(|token| bool::from(token.as_bytes().ct_eq(app.token.as_bytes())));
-    if !authorized {
+    let read = matches!(*request.method(), Method::GET | Method::HEAD);
+    if !(bearer || (read && session::valid(&app.token, headers))) {
         return StatusCode::UNAUTHORIZED.into_response();
     }
     let mut response = next.run(request).await;
@@ -94,6 +111,67 @@ async fn auth(State(app): State<Arc<App>>, request: Request, next: Next) -> Resp
         .headers_mut()
         .insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
     response
+}
+
+#[derive(Deserialize)]
+struct LoginBody {
+    token: String,
+}
+
+async fn login(
+    State(app): State<Arc<App>>,
+    headers: HeaderMap,
+    Json(body): Json<LoginBody>,
+) -> Response {
+    if !bool::from(body.token.trim().as_bytes().ct_eq(app.token.as_bytes())) {
+        return StatusCode::UNAUTHORIZED.into_response();
+    }
+    (
+        StatusCode::NO_CONTENT,
+        [(header::SET_COOKIE, session::issue(&app.token, &headers))],
+    )
+        .into_response()
+}
+
+#[derive(Deserialize)]
+struct RecallParams {
+    q: String,
+    /// Comma-separated.
+    #[serde(default)]
+    keywords: String,
+    budget: Option<usize>,
+}
+
+async fn recall(
+    State(app): State<Arc<App>>,
+    Query(params): Query<RecallParams>,
+) -> Result<Json<Value>> {
+    let keywords: Vec<_> = params
+        .keywords
+        .split(',')
+        .map(str::trim)
+        .filter(|k| !k.is_empty())
+        .take(retrieval::MAX_KEYWORDS)
+        .map(str::to_owned)
+        .collect();
+    let budget = params
+        .budget
+        .unwrap_or(DEFAULT_BUDGET)
+        .clamp(200, MAX_BUDGET);
+    let recalled = retrieval::recall(
+        app.storage.as_ref(),
+        app.reranker.as_deref(),
+        &params.q,
+        &keywords,
+        budget,
+    )
+    .await?;
+    Ok(Json(json!({
+        "reranked": recalled.reranked,
+        "tokens": recalled.tokens,
+        "passages": recalled.passages,
+        "leads": recalled.leads,
+    })))
 }
 
 #[derive(Deserialize)]
@@ -123,10 +201,22 @@ async fn graph(State(app): State<Arc<App>>) -> Result<Json<Graph>> {
     Ok(Json(app.storage.graph().await?))
 }
 
-async fn read(State(app): State<Arc<App>>, Path(title): Path<String>) -> Result<Json<Page>> {
+#[derive(Deserialize)]
+struct ReadParams {
+    /// `false` for maintenance scripts, whose reads aren't usage.
+    visit: Option<bool>,
+}
+
+async fn read(
+    State(app): State<Arc<App>>,
+    Path(title): Path<String>,
+    Query(params): Query<ReadParams>,
+) -> Result<Json<Page>> {
     let page = app.storage.page(&title).await?;
     // Bookkeeping only: a failed visit must not fail the read. The response keeps the previous visit.
-    if let Err(e) = app.storage.visit(&page.title).await {
+    if params.visit.unwrap_or(true)
+        && let Err(e) = app.storage.visit(&page.title).await
+    {
         eprintln!("{e}");
     }
     Ok(Json(page))
@@ -230,4 +320,133 @@ fn agent(headers: &HeaderMap) -> String {
         .and_then(|v| v.to_str().ok())
         .unwrap_or("unknown");
     agent.chars().take(64).collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::Path;
+
+    use reqwest::{Client, StatusCode};
+
+    use super::*;
+    use crate::storage::SqliteStorage;
+
+    #[tokio::test]
+    async fn browser_sessions_read_but_never_write() {
+        let token = "test-token-0123456789".to_owned();
+        let storage = Arc::new(SqliteStorage::open(Path::new(":memory:")).unwrap());
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let base = format!("http://{}/api", listener.local_addr().unwrap());
+        let app = Arc::new(App {
+            storage,
+            reranker: None,
+            token: token.clone(),
+        });
+        tokio::spawn(axum::serve(listener, router(app)).into_future());
+        let http = Client::new();
+
+        let wrong = http
+            .post(format!("{base}/login"))
+            .json(&json!({ "token": "nope" }))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(wrong.status(), StatusCode::UNAUTHORIZED);
+        let login = http
+            .post(format!("{base}/login"))
+            .json(&json!({ "token": token }))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(login.status(), StatusCode::NO_CONTENT);
+        let cookie = login.headers()[header::SET_COOKIE]
+            .to_str()
+            .unwrap()
+            .split(';')
+            .next()
+            .unwrap()
+            .to_owned();
+
+        let get = |path: &str| {
+            http.get(format!("{base}{path}"))
+                .header(header::COOKIE, &cookie)
+                .send()
+        };
+        let put = http
+            .put(format!("{base}/pages/Seen"))
+            .bearer_auth(&token)
+            .json(&json!({ "content": "x" }))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(put.status(), StatusCode::OK);
+        let quiet: Value = get("/pages/Seen?visit=false")
+            .await
+            .unwrap()
+            .json()
+            .await
+            .unwrap();
+        let counted: Value = get("/pages/Seen").await.unwrap().json().await.unwrap();
+        assert!(
+            quiet["visited_at"].is_null() && counted["visited_at"].is_null(),
+            "each read returns the previous visit"
+        );
+        let after: Value = get("/pages/Seen").await.unwrap().json().await.unwrap();
+        assert!(
+            after["visited_at"].is_string(),
+            "only the second read counted"
+        );
+        assert_eq!(
+            get("/session").await.unwrap().status(),
+            StatusCode::NO_CONTENT
+        );
+        assert_eq!(get("/stats").await.unwrap().status(), StatusCode::OK);
+        assert_eq!(
+            http.get(format!("{base}/stats"))
+                .send()
+                .await
+                .unwrap()
+                .status(),
+            StatusCode::UNAUTHORIZED
+        );
+
+        let ping = json!({ "jsonrpc": "2.0", "id": 1, "method": "ping" });
+        let with_cookie = http
+            .post(format!("{base}/mcp"))
+            .header(header::COOKIE, &cookie)
+            .json(&ping)
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(
+            with_cookie.status(),
+            StatusCode::UNAUTHORIZED,
+            "cookies never authorize writes"
+        );
+        let page = json!({ "content": "x" });
+        let put = http
+            .put(format!("{base}/pages/X"))
+            .header(header::COOKIE, &cookie)
+            .json(&page)
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(put.status(), StatusCode::UNAUTHORIZED);
+        let with_bearer = http
+            .post(format!("{base}/mcp"))
+            .bearer_auth(&token)
+            .json(&ping)
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(with_bearer.status(), StatusCode::OK);
+
+        let logout = http.post(format!("{base}/logout")).send().await.unwrap();
+        assert!(
+            logout.headers()[header::SET_COOKIE]
+                .to_str()
+                .unwrap()
+                .contains("Max-Age=0")
+        );
+    }
 }

@@ -2,7 +2,7 @@
 
 Persistent memory for agents, shared across devices. It follows the [LLM Wiki](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f) pattern: agents keep a Markdown wiki connected by `[[links]]`. Pages are stored in one SQLite database on a server instead of a folder that has to be synced between machines.
 
-- `pensieve-server` stores pages in SQLite and keeps revision history, the link graph and a section index. It implements the MCP tools and serves the HTTP API and a web UI for search, reading and a link-graph view.
+- `pensieve-server` stores pages in SQLite and keeps revision history, the link graph and a section index. It implements the MCP tools and serves the HTTP API and a web UI.
 - `pensieve` is the stdio MCP server each agent runs. It only forwards JSON-RPC to `pensieve-server`, so tools and agent guidance change with a server upgrade, without reinstalling on every device.
 
 Pages are indexed per `##`/`###` section with SQLite FTS5 BM25. With a Jev key, `recall` sends the top 40 matching sections to [Jev](https://vercel.com/ai-gateway/models/jev), which scores how likely each is to help, and drops the unlikely ones, as in [jevgrep](https://github.com/dzhng/jevgrep). If Jev fails, results fall back to BM25 order.
@@ -36,6 +36,12 @@ On first run, `make setup` creates `~/.config/pensieve/config.toml` (mode 0600) 
 Import an existing wiki once with `pensieve-server import ~/vaults/wiki`; it skips `index.md` and `log.md`. `pensieve-server export <dir>` writes every page back out as `<title>.md`. To reach the server from other devices, keep it on loopback and run `tailscale serve --bg 7878`. On Linux, run `loginctl enable-linger` so the service keeps running after you log out.
 
 New backends implement `storage::Storage` and must pass `storage::conformance::check`. New rerankers implement `rerank::Reranker`.
+
+## Web UI
+
+Open the server's URL and sign in with the server token. The UI has a dashboard, the link graph, a timeline of writes, activity by day, agent and type, and search, either by keyword or as `recall` answers an agent. Pages open in a side panel, and every view has its own link.
+
+Signing in sets a signed session cookie that lasts 30 days and can only read: writes still need the bearer token, so no web page can change memory through the browser. Signing out clears the cookie in that browser; rotating `server.token` ends every session. Tailscale Serve sends `X-Forwarded-Proto: https`, which marks the cookie `Secure`; other HTTPS proxies must send it too.
 
 ## Docker
 
@@ -82,4 +88,4 @@ Tools:
 
 Agent guidance ships with the server. The MCP instructions cover when to recall and when to write, the frontmatter fields (`type`, `tags`, `sources`, `confidence`) and linking conventions, followed by a generated map of memory: page counts per type, the most linked pages and recent writes. `type` is one of `topic`, `entity`, `source`, `synthesis`, `runbook`, `incident` or `audit`; other values are rejected. Pensieve tracks timestamps, backlinks and history itself, so the index, log and hub pages a file-based LLM wiki needs aren't maintained by hand.
 
-Each write is recorded with the agent and host that made it and its summary. Each page read through `read`, `recall` or the web UI updates its last visit time, `visited_at`, so stale pages can be found later.
+Each write is recorded with the agent and host that made it and its summary. Each page read through `read`, `recall` or the web UI updates its last visit time, `visited_at`, so stale pages can be found later. Scripts can read with `GET /api/pages/{title}?visit=false` without counting as a visit.

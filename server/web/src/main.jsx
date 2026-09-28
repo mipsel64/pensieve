@@ -1,237 +1,170 @@
-import React, { Fragment, useCallback, useEffect, useRef, useState } from 'react';
+import { lazy, StrictMode, Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import ForceGraph2D from 'react-force-graph-2d';
+import { Activity as ActivityIcon, History, LayoutDashboard, LogOut, Network, Search as SearchIcon } from 'lucide-react';
+import '@fontsource-variable/ibm-plex-sans/wght.css';
+import '@fontsource-variable/jetbrains-mono/wght.css';
 import './style.css';
+import { api, logout, Unauthorized } from './api.js';
+import { href, RouteContext, useHashRoute } from './router.js';
+import { AuthContext, ErrorNote, Loading, Logo } from './ui.jsx';
+import { Login } from './Login.jsx';
+import { Dashboard } from './Dashboard.jsx';
+import { Timeline } from './Timeline.jsx';
+import { Activity } from './Activity.jsx';
+import { Search } from './Search.jsx';
+import { PageDrawer } from './PageDrawer.jsx';
 
-const TOKEN_KEY = 'pensieve-token';
-const WIKILINK = /\[\[([^\]\n]+?)\]\]/g;
+// The graph library is most of the bundle; other views shouldn't wait for it.
+const GraphView = lazy(() => import('./Graph.jsx').then((m) => ({ default: m.GraphView })));
 
-class Unauthorized extends Error {}
-
-async function api(path, token) {
-  const res = await fetch(path, { headers: { Authorization: `Bearer ${token}` } });
-  if (res.status === 401) throw new Unauthorized('Enter the server token.');
-  if (!res.ok) throw new Error(await res.text());
-  return res.json();
-}
-
-const pageHref = (title) => `#${encodeURIComponent(title)}`;
-
-function hashTitle() {
-  try {
-    return decodeURIComponent(location.hash.slice(1));
-  } catch {
-    return '';
-  }
-}
-
-// force-graph renders node tooltips as HTML, and missing-page ids come from unvalidated link text.
-const escapeHtml = (s) => s.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
-
-function PageLink({ title, missing, children }) {
-  return <a href={pageHref(title)} className={missing ? 'missing' : undefined}>{children ?? title}</a>;
-}
-
-function List({ items }) {
-  return items.length ? items.map((item, i) => <Fragment key={i}>{i > 0 && ', '}{item}</Fragment>) : '—';
-}
-
-// Same link rules as the server: targets before `|` or `#`, outside fenced code.
-function Content({ text }) {
-  return text.split('```').map((block, i) => {
-    const fence = i ? '```' : '';
-    if (i % 2) return <Fragment key={i}>{fence}{block}</Fragment>;
-    const parts = [];
-    let last = 0;
-    for (const m of block.matchAll(WIKILINK)) {
-      const target = m[1].split(/[|#]/)[0].trim().replace(/\\$/, '').replace(/\.md$/, '');
-      parts.push(block.slice(last, m.index), target ? <PageLink key={m.index} title={target}>{m[0]}</PageLink> : m[0]);
-      last = m.index + m[0].length;
-    }
-    parts.push(block.slice(last));
-    return <Fragment key={i}>{fence}{parts}</Fragment>;
-  });
-}
-
-function Snippet({ text }) {
-  return text.split(/[«»]/).map((part, i) => (i % 2 ? <mark key={i}>{part}</mark> : part));
-}
-
-function Graph({ data, selected, hits }) {
-  const box = useRef();
-  const graph = useRef();
-  const fitted = useRef(false);
-  const [size, setSize] = useState({ width: 0, height: 0 });
-
-  useEffect(() => {
-    const observer = new ResizeObserver(([entry]) => setSize({ width: entry.contentRect.width, height: entry.contentRect.height }));
-    observer.observe(box.current);
-    return () => observer.disconnect();
-  }, []);
-
-  useEffect(() => {
-    const node = data.nodes.find((n) => n.id === selected);
-    if (node?.x === undefined || !graph.current) return;
-    graph.current.centerAt(node.x, node.y, 600);
-    graph.current.zoom(2.5, 600);
-  }, [data, selected]);
-
-  const nodeColor = (n) => (n.id === selected ? '#f7768e' : hits.has(n.id) ? '#e0af68' : n.missing ? '#3b4252' : '#7aa2f7');
-  const drawLabel = (n, ctx, scale) => {
-    if (scale < 2 && n.id !== selected && !hits.has(n.id)) return;
-    ctx.font = `${11 / scale}px system-ui, sans-serif`;
-    ctx.textAlign = 'center';
-    ctx.fillStyle = '#c8d0e0';
-    ctx.fillText(n.id, n.x, n.y + Math.sqrt(1 + Math.sqrt(n.degree)) * 3 + 10 / scale);
-  };
-
-  return (
-    <main ref={box} className="graph" aria-label="Page link graph">
-      {size.width > 0 && (
-        <ForceGraph2D
-          ref={graph}
-          graphData={data}
-          width={size.width}
-          height={size.height}
-          nodeRelSize={3}
-          nodeVal={(n) => 1 + Math.sqrt(n.degree)}
-          nodeLabel={(n) => escapeHtml(n.id)}
-          nodeColor={nodeColor}
-          nodeCanvasObjectMode={() => 'after'}
-          nodeCanvasObject={drawLabel}
-          linkColor={() => 'rgba(150, 160, 185, 0.18)'}
-          linkDirectionalArrowLength={3}
-          linkDirectionalArrowRelPos={1}
-          onNodeClick={(n) => (location.hash = pageHref(n.id))}
-          onEngineStop={() => {
-            if (fitted.current) return;
-            fitted.current = true;
-            graph.current.zoomToFit(400, 40);
-          }}
-        />
-      )}
-    </main>
-  );
-}
+const NAV = [
+  ['dashboard', 'Dashboard', LayoutDashboard],
+  ['graph', 'Graph', Network],
+  ['timeline', 'Timeline', History],
+  ['activity', 'Activity', ActivityIcon],
+  ['search', 'Search', SearchIcon],
+];
 
 function App() {
-  const [token, setToken] = useState(() => localStorage.getItem(TOKEN_KEY) || '');
-  const [locked, setLocked] = useState(false);
-  const [status, setStatus] = useState('');
-  const [graph, setGraph] = useState(null);
-  const [results, setResults] = useState([]);
-  const [title, setTitle] = useState(hashTitle);
-  const [page, setPage] = useState(null);
-
-  const call = useCallback(
-    (path) =>
-      api(path, token).catch((err) => {
-        if (err instanceof Unauthorized) setLocked(true);
-        throw err;
-      }),
-    [token],
-  );
-
-  useEffect(() => {
-    call('/api/graph')
-      .then((data) => {
-        const degree = {};
-        for (const l of data.links) {
-          degree[l.source] = (degree[l.source] || 0) + 1;
-          degree[l.target] = (degree[l.target] || 0) + 1;
-        }
-        for (const n of data.nodes) n.degree = degree[n.id] || 0;
-        setGraph(data);
-        setStatus(`${data.nodes.filter((n) => !n.missing).length} pages · ${data.links.length} links`);
-      })
-      .catch((err) => setStatus(err.message));
-  }, [call]);
-
-  useEffect(() => {
-    const onHash = () => setTitle(hashTitle());
-    addEventListener('hashchange', onHash);
-    return () => removeEventListener('hashchange', onHash);
+  const [auth, setAuth] = useState({ state: 'checking' });
+  // Any auth change outdates a session check still in flight, e.g. a 401 arriving after sign-in.
+  const latest = useRef(0);
+  const settle = useCallback((next) => {
+    latest.current++;
+    setAuth(next);
   }, []);
+  const check = useCallback(() => {
+    const request = ++latest.current;
+    setAuth({ state: 'checking' });
+    api('/session')
+      .then(() => request === latest.current && setAuth({ state: 'in' }))
+      .catch((error) => request === latest.current && setAuth(error instanceof Unauthorized ? { state: 'out' } : { state: 'error', error }));
+  }, []);
+  useEffect(check, [check]);
+  const lock = useCallback(() => settle({ state: 'out' }), [settle]);
+  // Only a cleared cookie signs out; otherwise the next reload would silently be signed in again.
+  const signOut = () =>
+    logout().then(lock, (error) => {
+      if (!(error instanceof Unauthorized)) throw error;
+      lock();
+    });
 
-  useEffect(() => {
-    if (!title) return;
-    let current = true;
-    call(`/api/pages/${encodeURIComponent(title)}`)
-      .then((p) => current && setPage(p))
-      .catch((err) => current && setStatus(`${title}: ${err.message}`));
-    return () => {
-      current = false;
-    };
-  }, [call, title]);
-
-  const pageBox = useRef();
-  useEffect(() => pageBox.current?.scrollTo(0, 0), [page]);
-
-  async function search(e) {
-    e.preventDefault();
-    const form = new FormData(e.currentTarget);
-    const params = new URLSearchParams({ q: form.get('q'), limit: '20', rerank: String(form.has('rerank')) });
-    setStatus('Searching…');
-    try {
-      const res = await call(`/api/search?${params}`);
-      setResults(res.hits);
-      setStatus(`${res.hits.length} results · ${res.reranked ? 'ranked by Jev' : 'BM25'}`);
-    } catch (err) {
-      setStatus(err.message);
-    }
-  }
-
-  function unlock(e) {
-    e.preventDefault();
-    const value = new FormData(e.currentTarget).get('token').trim();
-    localStorage.setItem(TOKEN_KEY, value);
-    setLocked(false);
-    setToken(value);
-  }
-
+  if (auth.state === 'checking') return <Loading label="Connecting" />;
+  if (auth.state === 'error') return <ErrorNote error={auth.error} onRetry={check} />;
+  if (auth.state === 'out') return <Login onSuccess={() => settle({ state: 'in' })} />;
   return (
-    <>
-      <aside>
-        {locked && (
-          <form onSubmit={unlock}>
-            <input name="token" type="password" placeholder="Server token" aria-label="Server token" autoComplete="current-password" required />
-            <button>Unlock</button>
-          </form>
-        )}
-        <form onSubmit={search}>
-          <input name="q" type="search" placeholder="Search memory…" aria-label="Search memory" autoComplete="off" />
-          <label title="Rerank with Jev when the server has a key">
-            <input name="rerank" type="checkbox" defaultChecked />
-            Jev
-          </label>
-          <button>Search</button>
-        </form>
-        <div className="status" role="status">{status}</div>
-        {results.length > 0 && (
-          <nav className="results" aria-label="Search results">
-            {results.map((hit) => (
-              <a key={hit.title} className="hit" href={pageHref(hit.title)}>
-                <b>{hit.title}</b> <small>{hit.score.toFixed(2)}</small>
-                <p><Snippet text={hit.snippet} /></p>
-              </a>
-            ))}
-          </nav>
-        )}
-        <article ref={pageBox} className="page">
-          {page && (
-            <>
-              <h2>{page.title}</h2>
-              <p className="meta">rev {page.rev} · updated {page.updated_at} by {page.updated_by} · last visit {page.visited_at ?? 'never'}</p>
-              <p className="meta">Links: <List items={page.links.map((l) => <PageLink title={l.title} missing={!l.exists} />)} /></p>
-              <p className="meta">Backlinks: <List items={page.backlinks.map((t) => <PageLink title={t} />)} /></p>
-              <pre><Content text={page.content} /></pre>
-            </>
-          )}
-        </article>
-      </aside>
-      {graph && <Graph data={graph} selected={page?.title} hits={new Set(results.map((h) => h.title))} />}
-    </>
+    <AuthContext.Provider value={lock}>
+      <Shell onSignOut={signOut} />
+    </AuthContext.Provider>
   );
 }
 
-createRoot(document.getElementById('root')).render(<App />);
+function Shell({ onSignOut }) {
+  const route = useHashRoute();
+  const { view, params } = route;
+  const search = useRef(null);
+  const main = useRef(null);
+  const [signOutError, setSignOutError] = useState(null);
+
+  useEffect(() => {
+    const label = NAV.find(([id]) => id === view)[1];
+    document.title = params.page ? `${params.page} · Pensieve` : `${label} · Pensieve`;
+  }, [view, params.page]);
+
+  useEffect(() => {
+    const onKey = (e) => {
+      const typing = ['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName);
+      if (e.key === '/' && !typing && !e.metaKey && !e.ctrlKey) {
+        e.preventDefault();
+        search.current?.focus();
+      }
+    };
+    addEventListener('keydown', onKey);
+    return () => removeEventListener('keydown', onKey);
+  }, []);
+
+  function submit(event) {
+    event.preventDefault();
+    const q = new FormData(event.currentTarget).get('q').trim();
+    if (q) location.hash = href('search', { q, mode: view === 'search' ? params.mode : undefined, jev: view === 'search' ? params.jev : undefined });
+  }
+
+  const content = {
+    dashboard: <Dashboard />,
+    graph: <GraphView params={params} />,
+    timeline: <Timeline params={params} />,
+    activity: <Activity />,
+    search: <Search params={params} />,
+  }[view];
+
+  return (
+    <RouteContext.Provider value={route}>
+      <div className={`shell${params.page ? ' with-drawer' : ''}`}>
+        <button type="button" className="skip" onClick={() => main.current?.focus()}>
+          Skip to content
+        </button>
+        <nav className="sidebar" aria-label="Main">
+          <a className="brand" href={href('dashboard')}>
+            <Logo size={26} />
+            <span>Pensieve</span>
+          </a>
+          <ul>
+            {NAV.map(([id, label, Icon]) => (
+              <li key={id}>
+                <a href={href(id)} aria-current={view === id ? 'page' : undefined}>
+                  <Icon size={18} aria-hidden="true" />
+                  <span>{label}</span>
+                </a>
+              </li>
+            ))}
+          </ul>
+        </nav>
+        <div className="main">
+          <header className="topbar">
+            <form className="search-form" role="search" onSubmit={submit}>
+              <SearchIcon size={16} aria-hidden="true" />
+              <input
+                ref={search}
+                key={view === 'search' ? params.q : ''}
+                name="q"
+                type="search"
+                placeholder="Search memory"
+                aria-label="Search memory"
+                defaultValue={view === 'search' ? (params.q ?? '') : ''}
+                autoComplete="off"
+              />
+              <kbd aria-hidden="true">/</kbd>
+            </form>
+            {signOutError && (
+              <span className="signout-error" role="alert">
+                Couldn't sign out: {signOutError.message}
+              </span>
+            )}
+            <button
+              type="button"
+              className="ghost signout"
+              onClick={() => {
+                setSignOutError(null);
+                onSignOut().catch(setSignOutError);
+              }}
+              aria-label="Sign out"
+            >
+              <LogOut size={16} aria-hidden="true" />
+              <span>Sign out</span>
+            </button>
+          </header>
+          <main ref={main} tabIndex={-1} className={`content content-${view}`}>
+            <Suspense fallback={<Loading />}>{content}</Suspense>
+          </main>
+        </div>
+        {params.page && <PageDrawer key={params.page} title={params.page} closeHref={href(view, { ...params, page: undefined })} />}
+      </div>
+    </RouteContext.Provider>
+  );
+}
+
+createRoot(document.getElementById('root')).render(
+  <StrictMode>
+    <App />
+  </StrictMode>,
+);
