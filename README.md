@@ -75,4 +75,4 @@ Tools:
 - `write`: create a page or replace one. Replacing needs `base_rev`, so a stale write from one device can't overwrite a newer change from another.
 - `edit`: replace one exact snippet.
 
-Each write is recorded with the agent and host that made it. The content of a page titled `AGENTS` is appended to the MCP server instructions, so the wiki schema is sent to every agent that connects.
+Each write is recorded with the agent and host that made it. Each page read through the API (MCP `read` or the web UI) updates the page's last visit time, `visited_at`, so stale pages can be found later. The content of a page titled `AGENTS` is appended to the MCP server instructions, so the wiki schema is sent to every agent that connects.

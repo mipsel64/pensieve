@@ -52,6 +52,11 @@ pub(crate) async fn check(storage: &dyn Storage) {
     );
     assert!(matches!(storage.page("nope").await, Err(Error::NotFound)));
 
+    assert_eq!(page.visited_at, None);
+    storage.visit("redis").await.unwrap();
+    assert!(storage.page("Redis").await.unwrap().visited_at.is_some());
+    assert!(matches!(storage.visit("nope").await, Err(Error::NotFound)));
+
     assert!(matches!(
         storage.edit("Redis", "nope", "x", "t").await,
         Err(Error::Invalid { .. })

@@ -35,6 +35,9 @@ pub trait Storage: Send + Sync {
     /// An empty query lists recently updated pages.
     async fn search(&self, query: &str, limit: usize) -> Result<Vec<Hit>>;
 
+    /// Records that a page was read now, for staleness-based eviction.
+    async fn visit(&self, title: &str) -> Result<()>;
+
     async fn graph(&self) -> Result<Graph>;
 
     /// Every page as `(title, content)`, ordered by title.
@@ -101,6 +104,8 @@ pub struct Page {
     pub rev: i64,
     pub updated_at: String,
     pub updated_by: String,
+    /// Last recorded read; `None` if never read.
+    pub visited_at: Option<String>,
     pub links: Vec<Link>,
     pub backlinks: Vec<String>,
 }

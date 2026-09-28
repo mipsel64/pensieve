@@ -42,6 +42,12 @@ CREATE TABLE IF NOT EXISTS links (
 );
 CREATE INDEX IF NOT EXISTS links_dst ON links (dst);
 
+-- Kept out of pages so recording a read doesn't fire the FTS update trigger.
+CREATE TABLE IF NOT EXISTS visits (
+    page INTEGER PRIMARY KEY REFERENCES pages (id) ON DELETE CASCADE,
+    at TEXT NOT NULL
+);
+
 CREATE VIRTUAL TABLE IF NOT EXISTS pages_fts USING fts5 (
     title, content, content = 'pages', content_rowid = 'id', tokenize = 'porter unicode61'
 );
@@ -112,6 +118,11 @@ impl Storage for SqliteStorage {
             .await
     }
 
+    async fn visit(&self, title: &str) -> Result<()> {
+        let title = title.to_owned();
+        self.run(move |conn| visit(conn, &title)).await
+    }
+
     async fn search(&self, query: &str, limit: usize) -> Result<Vec<Hit>> {
         let query = query.to_owned();
         self.run(move |conn| search(conn, &query, limit)).await
@@ -133,9 +144,10 @@ impl From<rusqlite::Error> for Error {
 }
 
 fn page(conn: &Connection, title: &str) -> Result<Page> {
-    let (id, title, content, rev, updated_at, updated_by) = conn
+    let (id, title, content, rev, updated_at, updated_by, visited_at) = conn
         .query_row(
-            "SELECT id, title, content, rev, updated_at, updated_by FROM pages WHERE title = ?1",
+            "SELECT p.id, p.title, p.content, p.rev, p.updated_at, p.updated_by, v.at
+             FROM pages p LEFT JOIN visits v ON v.page = p.id WHERE p.title = ?1",
             [title],
             |r| {
                 Ok((
@@ -145,6 +157,7 @@ fn page(conn: &Connection, title: &str) -> Result<Page> {
                     r.get(3)?,
                     r.get(4)?,
                     r.get(5)?,
+                    r.get(6)?,
                 ))
             },
         )
@@ -176,9 +189,23 @@ fn page(conn: &Connection, title: &str) -> Result<Page> {
         rev,
         updated_at,
         updated_by,
+        visited_at,
         links,
         backlinks,
     })
+}
+
+fn visit(conn: &Connection, title: &str) -> Result<()> {
+    let recorded = conn.execute(
+        "INSERT INTO visits (page, at)
+         SELECT id, strftime('%Y-%m-%dT%H:%M:%SZ', 'now') FROM pages WHERE title = ?1
+         ON CONFLICT (page) DO UPDATE SET at = excluded.at",
+        [title],
+    )?;
+    if recorded == 0 {
+        return Err(Error::NotFound);
+    }
+    Ok(())
 }
 
 fn save(

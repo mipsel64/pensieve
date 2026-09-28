@@ -129,7 +129,12 @@ async fn graph(State(app): State<Arc<App>>) -> Result<Json<Graph>> {
 }
 
 async fn read(State(app): State<Arc<App>>, Path(title): Path<String>) -> Result<Json<Page>> {
-    Ok(Json(app.storage.page(&title).await?))
+    let page = app.storage.page(&title).await?;
+    // Bookkeeping only: a failed visit must not fail the read. The response keeps the previous visit.
+    if let Err(e) = app.storage.visit(&page.title).await {
+        eprintln!("{e}");
+    }
+    Ok(Json(page))
 }
 
 #[derive(Deserialize)]

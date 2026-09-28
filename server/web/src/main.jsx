@@ -221,7 +221,7 @@ function App() {
           {page && (
             <>
               <h2>{page.title}</h2>
-              <p className="meta">rev {page.rev} · {page.updated_at} · {page.updated_by}</p>
+              <p className="meta">rev {page.rev} · updated {page.updated_at} by {page.updated_by} · last visit {page.visited_at ?? 'never'}</p>
               <p className="meta">Links: <List items={page.links.map((l) => <PageLink title={l.title} missing={!l.exists} />)} /></p>
               <p className="meta">Backlinks: <List items={page.backlinks.map((t) => <PageLink title={t} />)} /></p>
               <pre><Content text={page.content} /></pre>
