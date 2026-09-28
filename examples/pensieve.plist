@@ -8,11 +8,10 @@
     <string>__USER__</string>
     <key>ProgramArguments</key>
     <array>
-        <string>/bin/sh</string>
-        <string>-c</string>
-        <string>set -a; . "$0"; exec "$1" serve</string>
-        <string>__HOME__/.config/pensieve/environment</string>
         <string>__HOME__/.local/bin/pensieve-server</string>
+        <string>--config</string>
+        <string>__HOME__/.config/pensieve/config.toml</string>
+        <string>serve</string>
     </array>
     <key>EnvironmentVariables</key>
     <dict>

@@ -5,7 +5,7 @@ OS := $(shell uname -s)
 CARGO_TARGET_DIR ?= target
 BIN_DIR := $(HOME)/.local/bin
 BINS := pensieve-server pensieve
-CONFIG := $(HOME)/.config/pensieve/environment
+CONFIG := $(HOME)/.config/pensieve/config.toml
 PLIST := $(HOME)/.config/pensieve/pensieve.plist
 LAUNCHD_PLIST := /Library/LaunchDaemons/io.github.mipsel64.pensieve.plist
 LAUNCHD_SERVICE := system/io.github.mipsel64.pensieve
@@ -36,10 +36,10 @@ ensure-config:
 		umask 077; \
 		mkdir -p "$$(dirname "$(CONFIG)")"; \
 		token=$$(od -An -tx1 -N32 /dev/urandom | tr -d ' \n'); \
-		sed "s/^PENSIEVE_TOKEN=$$/PENSIEVE_TOKEN=$$token/" pensieve.example.env > "$(CONFIG)"; \
+		sed "s/^token = \"\"$$/token = \"$$token\"/" pensieve.example.toml > "$(CONFIG)"; \
 		printf '%s\n' \
-			"Created $(CONFIG) with a new PENSIEVE_TOKEN." \
-			'Clients need the same token. Add PENSIEVE_JEV_KEY there to enable Jev, then run make restart.' >&2; \
+			"Created $(CONFIG) with a new server token." \
+			'Clients need the same token. Set jev.key there to enable Jev, then run make restart.' >&2; \
 	fi
 
 ensure-os:
@@ -53,10 +53,10 @@ ifeq ($(OS),Darwin)
 	chmod 700 "$(HOME)/Library/Logs/pensieve"; \
 	test -e "$(PLIST)" || cp examples/pensieve.plist "$(PLIST)"; \
 	plutil -replace UserName -string "$$(id -un)" "$(PLIST)"; \
-	plutil -remove ProgramArguments.3 "$(PLIST)"; \
-	plutil -insert ProgramArguments.3 -string "$(CONFIG)" "$(PLIST)"; \
-	plutil -remove ProgramArguments.4 "$(PLIST)"; \
-	plutil -insert ProgramArguments.4 -string "$(BIN_DIR)/pensieve-server" "$(PLIST)"; \
+	plutil -remove ProgramArguments.0 "$(PLIST)"; \
+	plutil -insert ProgramArguments.0 -string "$(BIN_DIR)/pensieve-server" "$(PLIST)"; \
+	plutil -remove ProgramArguments.2 "$(PLIST)"; \
+	plutil -insert ProgramArguments.2 -string "$(CONFIG)" "$(PLIST)"; \
 	plutil -replace EnvironmentVariables.HOME -string "$(HOME)" "$(PLIST)"; \
 	plutil -replace StandardOutPath -string "$(HOME)/Library/Logs/pensieve/stdout.log" "$(PLIST)"; \
 	plutil -replace StandardErrorPath -string "$(HOME)/Library/Logs/pensieve/stderr.log" "$(PLIST)"; \

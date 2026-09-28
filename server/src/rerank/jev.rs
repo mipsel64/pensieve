@@ -1,6 +1,7 @@
 use std::time::Duration;
 
 use async_trait::async_trait;
+use serde::Deserialize;
 use serde_json::{Map, Value, json};
 use tokio::task::JoinSet;
 
@@ -15,8 +16,10 @@ const BATCH: usize = 8;
 /// Jev answers are probabilities; keep pages it judges more likely relevant than not.
 const THRESHOLD: f64 = 0.5;
 
-#[derive(Clone, Copy, clap::ValueEnum)]
+#[derive(Clone, Copy, Default, Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum Provider {
+    #[default]
     Vercel,
     Typesafe,
     Openrouter,

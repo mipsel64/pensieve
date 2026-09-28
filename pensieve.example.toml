@@ -1,0 +1,21 @@
+# Copy to ~/.config/pensieve/config.toml, or select another file with --config / -c
+# (or PENSIEVE_CONFIG). `make setup` creates it with a random token. Restart after editing.
+# PENSIEVE_LISTEN, PENSIEVE_TOKEN, PENSIEVE_DB, PENSIEVE_JEV_KEY and PENSIEVE_JEV_PROVIDER
+# override the matching settings; empty values are ignored.
+
+[server]
+# Keep loopback; publish to other devices with `tailscale serve --bg 7878`.
+listen = "127.0.0.1:7878"
+# Bearer token for the API, the web UI and every MCP client. At least 16 characters.
+token = ""
+
+[storage]
+# SQLite database file. Relative paths are resolved against this file's directory.
+# Default: ~/.local/share/pensieve/pensieve.db
+# path = "/var/lib/pensieve/pensieve.db"
+
+[jev]
+# Reranks search results with Jev. Without a key, search is BM25 only.
+# key = ""
+# vercel, typesafe, openrouter or opencode.
+provider = "vercel"

@@ -4,3 +4,4 @@
 /.pi
 server/web/node_modules/
 server/web/dist/
+/pensieve.env

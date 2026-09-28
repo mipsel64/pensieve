@@ -15,15 +15,17 @@ Building needs Rust and Node 22.18 or newer. The web UI (React and Vite, in `ser
 make setup      # installs pensieve-server and pensieve to ~/.local/bin and starts the service
 ```
 
-On first run, `make setup` creates `~/.config/pensieve/environment` (mode 0600) with a random `PENSIEVE_TOKEN`. Every client needs this token. The service is a launchd daemon on macOS and a systemd user service on Linux; both read their settings from this file.
+On first run, `make setup` creates `~/.config/pensieve/config.toml` (mode 0600) from [`pensieve.example.toml`](pensieve.example.toml), with a random server token. Every client needs this token. The service is a launchd daemon on macOS and a systemd user service on Linux. Both start `pensieve-server --config ~/.config/pensieve/config.toml serve`, so run `make restart` after editing the file.
 
-| Setting | Default | |
-|---|---|---|
-| `PENSIEVE_TOKEN` | generated | Bearer token for the API and web UI (at least 16 characters) |
-| `PENSIEVE_DB` | `~/.local/share/pensieve/pensieve.db` | SQLite file |
-| `PENSIEVE_LISTEN` | `127.0.0.1:7878` | |
-| `PENSIEVE_JEV_KEY` | unset (BM25 only) | Key for the chosen provider |
-| `PENSIEVE_JEV_PROVIDER` | `vercel` | `vercel`, `typesafe`, `openrouter` or `opencode` |
+| Setting | Env override | Default | |
+|---|---|---|---|
+| `server.token` | `PENSIEVE_TOKEN` | generated | Bearer token for the API and web UI (at least 16 characters) |
+| `server.listen` | `PENSIEVE_LISTEN` | `127.0.0.1:7878` | |
+| `storage.path` | `PENSIEVE_DB` | `~/.local/share/pensieve/pensieve.db` | SQLite file. Relative paths are resolved against the config file's directory |
+| `jev.key` | `PENSIEVE_JEV_KEY` | unset (BM25 only) | Key for the chosen provider |
+| `jev.provider` | `PENSIEVE_JEV_PROVIDER` | `vercel` | `vercel`, `typesafe`, `openrouter` or `opencode` |
+
+`-c <file>` (or `PENSIEVE_CONFIG`) selects another config file. Without it, `pensieve-server` reads `~/.config/pensieve/config.toml` if it exists and otherwise uses the defaults. Environment variables override the file; empty ones are ignored. Unknown keys are rejected, so typos fail at startup.
 
 | Command | |
 |---|---|
@@ -42,12 +44,13 @@ The image contains only `pensieve-server` and runs as a non-root user. The datab
 ```sh
 docker build -t pensieve .
 docker run --rm -v pensieve:/var/lib/pensieve -v ~/vaults/wiki:/wiki:ro pensieve import /wiki   # optional
+printf 'PENSIEVE_TOKEN=%s\n' "$(openssl rand -hex 32)" > pensieve.env && chmod 600 pensieve.env
 docker run -d --name pensieve --restart unless-stopped \
   -p 127.0.0.1:7878:7878 -v pensieve:/var/lib/pensieve \
-  --env-file ~/.config/pensieve/environment pensieve
+  --env-file pensieve.env pensieve
 ```
 
-The env file needs `PENSIEVE_TOKEN` and optionally the Jev settings. Leave `PENSIEVE_DB` and `PENSIEVE_LISTEN` unset; the image sets them. Keep the `127.0.0.1:` prefix on `-p`: without it, Docker publishes the port on every interface, and on Linux that bypasses the host firewall. Then run `tailscale serve --bg 7878` on the host as above.
+Add `PENSIEVE_JEV_KEY` to `pensieve.env` to enable Jev. To use a config file instead, mount it with `-v ./config.toml:/etc/pensieve/config.toml:ro -e PENSIEVE_CONFIG=/etc/pensieve/config.toml`; the container user (uid 65532) must be able to read it. The image sets `PENSIEVE_DB` and `PENSIEVE_LISTEN`, which override `storage.path` and `server.listen` in the file. Keep the `127.0.0.1:` prefix on `-p`: without it, Docker publishes the port on every interface, and on Linux that bypasses the host firewall. Then run `tailscale serve --bg 7878` on the host as above.
 
 ## Agents
 
