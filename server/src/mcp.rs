@@ -1,4 +1,4 @@
-//! MCP over JSON-RPC: tools, instructions and prompts. The `pensieve` client bridges stdio to this.
+//! MCP over JSON-RPC at `/mcp`: tools, instructions and prompts.
 
 use std::{collections::HashSet, fmt::Write as _};
 

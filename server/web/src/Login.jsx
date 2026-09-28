@@ -41,7 +41,7 @@ export function Login({ onSuccess }) {
             value={token}
             onChange={(e) => setToken(e.target.value)}
             aria-invalid={Boolean(error)}
-            aria-describedby={error ? 'token-error token-help' : 'token-help'}
+            aria-describedby={error ? 'token-error' : undefined}
           />
           <button type="button" className="icon-button" onClick={() => setVisible((v) => !v)} aria-label={visible ? 'Hide token' : 'Show token'}>
             {visible ? <EyeOff size={18} aria-hidden="true" /> : <Eye size={18} aria-hidden="true" />}
@@ -52,9 +52,6 @@ export function Login({ onSuccess }) {
             {error}
           </p>
         )}
-        <p id="token-help" className="help">
-          It's <code>server.token</code> in <code>~/.config/pensieve/config.toml</code> on the server. You stay signed in on this browser for 30 days.
-        </p>
         <button className="primary" disabled={busy || !token.trim()}>
           {busy && <Loader2 className="spin" size={16} aria-hidden="true" />}
           {busy ? 'Signing in' : 'Sign in'}

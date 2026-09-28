@@ -12,7 +12,7 @@ export const ACCENTS = {
 
 export const DEFAULT_SETTINGS = {
   accent: 'silver',
-  search: { mode: 'keywords', rerank: true },
+  search: { mode: 'ask', rerank: true },
   graph: {
     missing: false,
     orphans: true,
@@ -52,7 +52,7 @@ export const GRAPH_SLIDERS = {
   ],
 };
 
-export const SEARCH_MODES = ['keywords', 'ask'];
+export const SEARCH_MODES = ['ask', 'keywords'];
 
 // Stored settings may be old or hand-edited: keep only values the UI can use.
 function withDefaults(stored) {

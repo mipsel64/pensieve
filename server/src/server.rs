@@ -46,7 +46,6 @@ pub fn router(app: Arc<App>) -> Router {
                 .put(save_settings)
                 .layer(DefaultBodyLimit::max(MAX_SETTINGS_BYTES)),
         )
-        .route("/mcp", post(mcp))
         .route_layer(middleware::from_fn_with_state(app.clone(), auth))
         .route("/login", post(login))
         .route(
@@ -59,6 +58,8 @@ pub fn router(app: Arc<App>) -> Router {
             }),
         );
     Router::new()
+        .route("/mcp", post(mcp))
+        .route_layer(middleware::from_fn_with_state(app.clone(), auth))
         .nest("/api", api)
         .fallback(asset)
         .with_state(app)
@@ -367,7 +368,8 @@ mod tests {
         let token = "test-token-0123456789".to_owned();
         let storage = Arc::new(SqliteStorage::open(Path::new(":memory:")).unwrap());
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let base = format!("http://{}/api", listener.local_addr().unwrap());
+        let root = format!("http://{}", listener.local_addr().unwrap());
+        let base = format!("{root}/api");
         let app = Arc::new(App {
             storage,
             reranker: None,
@@ -483,7 +485,7 @@ mod tests {
 
         let ping = json!({ "jsonrpc": "2.0", "id": 1, "method": "ping" });
         let with_cookie = http
-            .post(format!("{base}/mcp"))
+            .post(format!("{root}/mcp"))
             .header(header::COOKIE, &cookie)
             .json(&ping)
             .send()
@@ -504,7 +506,7 @@ mod tests {
             .unwrap();
         assert_eq!(put.status(), StatusCode::UNAUTHORIZED);
         let with_bearer = http
-            .post(format!("{base}/mcp"))
+            .post(format!("{root}/mcp"))
             .bearer_auth(&token)
             .json(&ping)
             .send()

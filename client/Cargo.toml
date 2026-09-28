@@ -1,9 +1,0 @@
-[package]
-name = "pensieve"
-version.workspace = true
-edition.workspace = true
-license.workspace = true
-
-[dependencies]
-reqwest = { version = "0.13", features = ["blocking", "json"] }
-serde_json = "1"

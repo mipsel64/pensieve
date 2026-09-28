@@ -3,8 +3,8 @@ import { Check, Loader2, LogOut, RotateCcw } from 'lucide-react';
 import { ACCENTS, GraphControls, resetGraph, SEARCH_MODES, Toggle, useSettings } from './settings.jsx';
 
 const MODE_LABELS = {
-  keywords: 'Search pages by their words',
-  ask: 'Ask, returning the passages recall would give an agent',
+  ask: 'Answer: the passages recall would give an agent, with their sources',
+  keywords: 'Pages: whole pages ranked by their words',
 };
 
 export function Settings({ onSignOut }) {
