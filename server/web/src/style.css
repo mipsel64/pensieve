@@ -20,7 +20,7 @@
   --radius: 12px;
   --radius-sm: 8px;
   --sidebar: 220px;
-  --drawer: min(620px, 46vw);
+  --drawer: min(var(--drawer-w, min(620px, 46vw)), calc(100vw - var(--sidebar) - 360px));
   --font-sans: 'IBM Plex Sans Variable', 'IBM Plex Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
   --font-mono: 'JetBrains Mono Variable', 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
   --ease: cubic-bezier(0.2, 0, 0, 1);
@@ -1931,6 +1931,7 @@ button:disabled {
 /* Page drawer */
 
 .drawer {
+  position: relative;
   display: flex;
   min-width: 0;
   min-height: 0;
@@ -1938,6 +1939,44 @@ button:disabled {
   border-left: 1px solid var(--border);
   background: #070909;
   animation: drawer-in 180ms var(--ease);
+}
+
+/* Straddles the panel's left border, so it's easy to grab. */
+.drawer-resize {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -5px;
+  z-index: 3;
+  width: 10px;
+  cursor: col-resize;
+  touch-action: none;
+}
+
+.drawer-resize::after {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 4px;
+  width: 2px;
+  background: transparent;
+  content: '';
+  transition: background-color 150ms var(--ease);
+}
+
+.drawer-resize:hover::after,
+.drawer-resize:focus-visible::after,
+.resizing .drawer-resize::after {
+  background: var(--accent);
+}
+
+.drawer-resize:focus-visible {
+  outline: 0;
+}
+
+.resizing {
+  cursor: col-resize;
+  user-select: none;
 }
 
 @keyframes drawer-in {
@@ -2246,7 +2285,7 @@ button:disabled {
     right: 0;
     bottom: 0;
     z-index: 10;
-    width: min(620px, 92vw);
+    width: min(var(--drawer-w, 620px), 92vw);
     box-shadow: -24px 0 60px rgba(0, 0, 0, 0.7);
   }
 }
@@ -2342,6 +2381,10 @@ button:disabled {
   .drawer {
     width: 100%;
     bottom: calc(60px + env(safe-area-inset-bottom));
+  }
+
+  .drawer-resize {
+    display: none;
   }
 
   .icon-button {
