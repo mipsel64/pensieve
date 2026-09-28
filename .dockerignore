@@ -3,9 +3,6 @@
 !LICENSE
 !Cargo.toml
 !Cargo.lock
-!client/Cargo.toml
-!client/src/
-!client/src/**
 !server/Cargo.toml
 !server/build.rs
 !server/src/

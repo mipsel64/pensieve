@@ -4,7 +4,7 @@ SHELL := /bin/sh
 OS := $(shell uname -s)
 CARGO_TARGET_DIR ?= target
 BIN_DIR := $(HOME)/.local/bin
-BINS := pensieve-server pensieve
+BINS := pensieve-server
 CONFIG := $(HOME)/.config/pensieve/config.toml
 PLIST := $(HOME)/.config/pensieve/pensieve.plist
 LAUNCHD_PLIST := /Library/LaunchDaemons/io.github.mipsel64.pensieve.plist
@@ -118,4 +118,4 @@ else ifeq ($(OS),Linux)
 		systemctl --user daemon-reload; \
 	fi
 endif
-	rm -f $(addprefix "$(BIN_DIR)"/,$(BINS))
+	rm -f $(addprefix "$(BIN_DIR)"/,$(BINS) pensieve)

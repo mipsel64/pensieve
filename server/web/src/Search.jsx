@@ -1,12 +1,18 @@
-import { useContext, useEffect, useRef, useState } from 'react';
-import { FileText, Loader2, MessageSquareText, Search as SearchIcon, Sparkles, X } from 'lucide-react';
+import { useContext, useEffect, useMemo, useRef, useState } from 'react';
+import { ArrowRight, ArrowUpRight, Check, Copy, FileText, Layers, ListTree, Sparkles, X } from 'lucide-react';
 import { api, query, Unauthorized } from './api.js';
-import { href } from './router.js';
-import { AuthContext, ErrorNote, formatNumber, KIND_COLORS, Logo, Markdown, PageLink, RelTime, TypeBadge } from './ui.jsx';
-import { useSettings } from './settings.jsx';
+import { href, usePageHref } from './router.js';
+import { AuthContext, ErrorNote, formatNumber, KIND_COLORS, Logo, Markdown, PageLink, RelTime } from './ui.jsx';
+import { Toggle, useSettings } from './settings.jsx';
+import { withoutTitle } from './Page.jsx';
 
 // The server drops everything but letters and digits, so `???` would otherwise list recent pages as matches.
 const searchable = (q) => /[\p{L}\p{N}]/u.test(q);
+
+const MODES = [
+  ['ask', 'Answer', Sparkles],
+  ['keywords', 'Pages', FileText],
+];
 
 export function Search({ params }) {
   const { settings } = useSettings();
@@ -17,86 +23,78 @@ export function Search({ params }) {
     if (value.trim()) location.hash = href('search', { ...params, q: value.trim(), mode: nextMode });
   };
 
-  if (!q) {
-    return (
-      <div className="search-home">
-        <div className="search-hero">
-          <Logo size={84} />
-          <h1>Pensieve</h1>
-        </div>
-        <SearchBox initial="" big autoFocus onSubmit={(value) => go(value, settings.search.mode)}>
-          {(value) => (
-            <div className="search-actions">
-              <button type="button" className="pill" onClick={() => go(value, 'keywords')}>
-                Search memory
-              </button>
-              <button type="button" className="pill" onClick={() => go(value, 'ask')}>
-                Ask a question
-              </button>
-            </div>
-          )}
-        </SearchBox>
-        <p className="search-hint">
-          <strong>Search</strong> ranks whole pages by their words. <strong>Ask</strong> returns the passages an agent's recall would get.
-        </p>
-      </div>
-    );
-  }
-
-  const tab = (value, label, Icon) => (
-    <a className="serp-tab" href={href('search', { ...params, mode: value })} aria-current={mode === value ? 'page' : undefined}>
-      <Icon size={16} aria-hidden="true" />
-      {label}
-    </a>
-  );
+  if (!q) return <SearchHome initialMode={settings.search.mode} onSubmit={go} />;
 
   return (
-    <div className="serp">
-      <header className="serp-header">
-        <a className="serp-brand" href={href('search')} aria-label="New search">
-          <Logo size={30} />
-          <span>Pensieve</span>
-        </a>
-        <SearchBox key={q} initial={q} onSubmit={(value) => go(value)} />
-      </header>
-      <div className="serp-tabs">
-        <nav aria-label="Search mode">
-          {tab('keywords', 'Pages', FileText)}
-          {tab('ask', 'Ask', MessageSquareText)}
-        </nav>
-        {mode === 'keywords' && (
-          <label className="checkbox">
-            <input type="checkbox" checked={rerank} onChange={(e) => (location.hash = href('search', { ...params, jev: e.target.checked ? '1' : '0' }))} />
-            Rerank with Jev
-          </label>
-        )}
+    <div className="thread">
+      <div className="thread-body">
+        <h1 className="thread-query">{q}</h1>
+        <div className="thread-tabs">
+          <nav aria-label="Result type">
+            {MODES.map(([value, label, Icon]) => (
+              <a key={value} className="thread-tab" href={href('search', { ...params, mode: value })} aria-current={mode === value ? 'page' : undefined}>
+                <Icon size={16} aria-hidden="true" /> {label}
+              </a>
+            ))}
+          </nav>
+          {mode === 'keywords' && (
+            <Toggle id="thread-rerank" label="Rerank with Jev" checked={rerank} onChange={(v) => (location.hash = href('search', { ...params, jev: v ? '1' : '0' }))} />
+          )}
+        </div>
+        <Results q={q} mode={mode} rerank={rerank} params={params} />
       </div>
-      <Results q={q} mode={mode} rerank={rerank} params={params} />
+      <div className="followup">
+        <AskBox key={q} initial={q} placeholder="Ask a follow-up or search again" onSubmit={(value) => go(value)} />
+      </div>
     </div>
   );
 }
 
-function SearchBox({ initial, big, autoFocus, onSubmit, children }) {
+function SearchHome({ initialMode, onSubmit }) {
+  const [mode, setMode] = useState(initialMode);
+  return (
+    <div className="search-home">
+      <div className="search-hero">
+        <Logo size={84} />
+        <h1>Pensieve</h1>
+      </div>
+      <AskBox big initial="" autoFocus placeholder="Ask memory anything, or look up a page" onSubmit={(value) => onSubmit(value, mode)}>
+        <div className="modes" role="radiogroup" aria-label="Show">
+          {MODES.map(([value, label, Icon]) => (
+            <label key={value} className="mode">
+              <input type="radio" name="search-mode-pick" value={value} checked={mode === value} onChange={() => setMode(value)} />
+              <Icon size={15} aria-hidden="true" /> {label}
+            </label>
+          ))}
+        </div>
+      </AskBox>
+      <p className="search-hint">
+        <strong>Answer</strong> shows the passages an agent's recall would get, with their sources. <strong>Pages</strong> ranks whole pages by their words.
+      </p>
+    </div>
+  );
+}
+
+function AskBox({ initial, big, autoFocus, placeholder, onSubmit, children }) {
   const [value, setValue] = useState(initial);
   const input = useRef(null);
   return (
     <form
-      className={`search-form${big ? ' big' : ''}`}
+      className={`ask-box${big ? ' big' : ''}`}
       role="search"
       onSubmit={(e) => {
         e.preventDefault();
         onSubmit(value);
       }}
     >
-      <div className="search-box">
-        <SearchIcon size={big ? 20 : 18} aria-hidden="true" />
+      <div className="ask-field">
         <input
           ref={input}
           id="search-q"
           value={value}
           onChange={(e) => setValue(e.target.value)}
           aria-label="Search memory"
-          placeholder={big ? 'Search memory or ask a question' : undefined}
+          placeholder={placeholder}
           autoComplete="off"
           enterKeyHint="search"
           autoFocus={autoFocus}
@@ -115,7 +113,12 @@ function SearchBox({ initial, big, autoFocus, onSubmit, children }) {
           </button>
         )}
       </div>
-      {children?.(value)}
+      <div className="ask-bar">
+        {children}
+        <button type="submit" className="ask-submit" aria-label="Search" disabled={!value.trim()}>
+          <ArrowRight size={18} aria-hidden="true" />
+        </button>
+      </div>
     </form>
   );
 }
@@ -145,34 +148,192 @@ function Results({ q, mode, rerank, params }) {
     };
   }, [q, mode, rerank, key, valid, lock]);
 
-  if (!valid) return <p className="serp-note">Type a word or a name to search for.</p>;
+  if (!valid) return <p className="thread-note">Type a word or a name to search for.</p>;
   const fresh = result.key === key && !result.loading;
   return (
-    <div className="serp-body" aria-busy={result.loading}>
-      {result.loading && (
-        <p className="serp-stats" role="status">
-          <Loader2 className="spin" size={15} aria-hidden="true" /> {mode === 'ask' ? 'Recalling…' : 'Searching…'}
-        </p>
-      )}
+    <div className="thread-results" aria-busy={result.loading}>
+      {result.loading && <Skeleton mode={mode} />}
       {result.error && fresh && <ErrorNote error={result.error} />}
-      {result.data && fresh && (mode === 'ask' ? <Answer data={result.data} seconds={result.seconds} /> : <Hits data={result.data} seconds={result.seconds} q={q} params={params} />)}
+      {result.data && fresh && (mode === 'ask' ? <Answer data={result.data} took={result.seconds} /> : <Hits data={result.data} took={result.seconds} q={q} params={params} />)}
+    </div>
+  );
+}
+
+function Skeleton({ mode }) {
+  return (
+    <div className="skeleton" role="status" aria-label={mode === 'ask' ? 'Recalling' : 'Searching'}>
+      {mode === 'ask' && (
+        <div className="skeleton-cards">
+          <span />
+          <span />
+          <span />
+          <span />
+        </div>
+      )}
+      <span className="skeleton-line" />
+      <span className="skeleton-line" />
+      <span className="skeleton-line" />
+      <span className="skeleton-line short" />
     </div>
   );
 }
 
 const seconds = (s) => `${s.toFixed(2)} seconds`;
+const plural = (n, word) => `${formatNumber(n)} ${n === 1 ? word : `${word}s`}`;
 
-function Hits({ data, seconds: took, q, params }) {
+function Answer({ data, took }) {
+  // Sources are numbered by the first passage that cites them, like footnotes.
+  const sources = useMemo(() => {
+    const byTitle = new Map();
+    for (const p of data.passages) {
+      const source = byTitle.get(p.title) ?? { title: p.title, kind: p.kind, n: byTitle.size + 1, passages: 0 };
+      source.passages++;
+      byTitle.set(p.title, source);
+    }
+    return byTitle;
+  }, [data]);
+
+  return (
+    <>
+      {data.passages.length ? (
+        <>
+          <Sources sources={[...sources.values()]} />
+          <section className="answer" aria-labelledby="answer-title">
+            <h2 id="answer-title" className="thread-heading">
+              <Sparkles size={17} aria-hidden="true" /> Answer
+            </h2>
+            <p className="thread-meta" role="status">
+              What recall gives an agent: {plural(data.passages.length, 'passage')} · about {formatNumber(data.tokens)} tokens · ranked by{' '}
+              {data.reranked ? 'Jev relevance' : 'BM25'} ({seconds(took)})
+            </p>
+            <ol className="passages">
+              {data.passages.map((p) => (
+                <li key={`${p.title}:${p.ord}`} className="passage">
+                  <p className="passage-source">
+                    <PageLink title={p.title}>
+                      <span className="cite">{sources.get(p.title).n}</span>
+                      {p.title}
+                    </PageLink>
+                    {p.heading && <span className="muted"> › {p.heading}</span>}
+                    {data.reranked && <span className="mono muted"> · relevance {p.score.toFixed(2)}</span>}
+                  </p>
+                  <div className="prose">
+                    <Markdown>{withoutTitle(p.text, p.title)}</Markdown>
+                  </div>
+                </li>
+              ))}
+            </ol>
+            <div className="answer-actions">
+              <CopyButton key={asMarkdown(data.passages)} text={asMarkdown(data.passages)} />
+            </div>
+          </section>
+        </>
+      ) : (
+        <p className="thread-note">Nothing in memory answers this. Try other words, or look for a page title under Pages.</p>
+      )}
+      {data.leads.length > 0 && (
+        <section className="related" aria-labelledby="related-title">
+          <h2 id="related-title" className="thread-heading">
+            <ListTree size={17} aria-hidden="true" /> Related pages
+          </h2>
+          <ul>
+            {data.leads.map((t) => (
+              <li key={t}>
+                <PageLink title={t}>
+                  <span>{t}</span>
+                  <ArrowUpRight size={16} aria-hidden="true" />
+                </PageLink>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+    </>
+  );
+}
+
+function Sources({ sources }) {
+  const [all, setAll] = useState(false);
+  const pageHref = usePageHref();
+  const folded = !all && sources.length > 4;
+  const shown = folded ? sources.slice(0, 3) : sources;
+  return (
+    <section className="sources" aria-labelledby="sources-title">
+      <h2 id="sources-title" className="thread-heading">
+        <Layers size={17} aria-hidden="true" /> Sources <span className="count">{sources.length}</span>
+      </h2>
+      <ol className="source-cards">
+        {shown.map((s) => (
+          <li key={s.title}>
+            <a className="source-card" href={pageHref(s.title)}>
+              <span className="source-title">{s.title}</span>
+              <span className="source-meta">
+                <span className="dot" style={{ background: KIND_COLORS[s.kind] ?? KIND_COLORS.untyped }} aria-hidden="true" />
+                <span className="source-kind">
+                  {s.kind ?? 'untyped'} · {plural(s.passages, 'passage')}
+                </span>
+                <span className="source-n">{s.n}</span>
+              </span>
+            </a>
+          </li>
+        ))}
+        {folded && (
+          <li>
+            <button type="button" className="source-card more" onClick={() => setAll(true)}>
+              <span className="source-title">+{sources.length - 3} more</span>
+              <span className="source-meta">
+                {sources.slice(3, 9).map((s) => (
+                  <span key={s.title} className="dot" style={{ background: KIND_COLORS[s.kind] ?? KIND_COLORS.untyped }} aria-hidden="true" />
+                ))}
+              </span>
+            </button>
+          </li>
+        )}
+      </ol>
+    </section>
+  );
+}
+
+const asMarkdown = (passages) => passages.map((p) => `## ${p.title}${p.heading ? ` › ${p.heading}` : ''}\n\n${p.text.trim()}`).join('\n\n');
+
+function CopyButton({ text }) {
+  const [state, setState] = useState('idle');
+  useEffect(() => {
+    if (state === 'idle') return;
+    const timer = setTimeout(() => setState('idle'), 2000);
+    return () => clearTimeout(timer);
+  }, [state]);
+  return (
+    <button
+      type="button"
+      className="ghost"
+      // The clipboard API is missing outside HTTPS and localhost; that should read as a failed copy, not an error.
+      onClick={() =>
+        Promise.resolve()
+          .then(() => navigator.clipboard.writeText(text))
+          .then(
+            () => setState('copied'),
+            () => setState('failed'),
+          )
+      }
+    >
+      {state === 'copied' ? <Check size={15} aria-hidden="true" /> : <Copy size={15} aria-hidden="true" />}
+      <span aria-live="polite">{state === 'copied' ? 'Copied' : state === 'failed' ? "Couldn't copy" : 'Copy passages'}</span>
+    </button>
+  );
+}
+
+function Hits({ data, took, q, params }) {
   if (!data.hits.length) {
     return (
-      <div className="serp-empty">
+      <div className="thread-note">
         <p>
           No pages match <strong>{q}</strong>.
         </p>
         <ul>
           <li>Try different or fewer words.</li>
           <li>
-            Or <a href={href('search', { ...params, mode: 'ask' })}>ask it as a question</a>: recall matches sections rather than whole pages.
+            Or <a href={href('search', { ...params, mode: 'ask' })}>see the answer</a>: recall matches sections rather than whole pages.
           </li>
         </ul>
       </div>
@@ -180,8 +341,8 @@ function Hits({ data, seconds: took, q, params }) {
   }
   return (
     <>
-      <p className="serp-stats" role="status">
-        {data.hits.length} {data.hits.length === 1 ? 'page' : 'pages'} ({seconds(took)}) · ranked by {data.reranked ? 'Jev relevance' : 'BM25'}
+      <p className="thread-meta" role="status">
+        {plural(data.hits.length, 'page')} · ranked by {data.reranked ? 'Jev relevance' : 'BM25'} ({seconds(took)})
       </p>
       <ol className="serp-list">
         {data.hits.map((hit) => (
@@ -210,67 +371,7 @@ function Hits({ data, seconds: took, q, params }) {
           </li>
         ))}
       </ol>
-      {data.hits.length === 30 && <p className="serp-note">Showing the 30 best matches. Add words to narrow the search.</p>}
+      {data.hits.length === 30 && <p className="thread-note">Showing the 30 best matches. Add words to narrow the search.</p>}
     </>
-  );
-}
-
-function Answer({ data, seconds: took }) {
-  return (
-    <>
-      {data.passages.length ? <Recall data={data} took={took} /> : <p className="serp-note">Nothing in memory answers this. Try other words, or search for a page title.</p>}
-      {data.leads.length > 0 && (
-        <section className="related" aria-labelledby="related-title">
-          <h2 id="related-title">Related pages</h2>
-          <ul>
-            {data.leads.map((t) => (
-              <li key={t}>
-                <PageLink title={t}>
-                  <SearchIcon size={15} aria-hidden="true" /> {t}
-                </PageLink>
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
-    </>
-  );
-}
-
-function Recall({ data, took }) {
-  const pages = new Set(data.passages.map((p) => p.title));
-  return (
-    <section className="recall-box" aria-labelledby="recall-title">
-      <h2 id="recall-title">
-        <Sparkles size={17} aria-hidden="true" /> What an agent would recall
-      </h2>
-      <p className="serp-stats" role="status">
-        {data.passages.length} passages from {pages.size} {pages.size === 1 ? 'page' : 'pages'} · about {formatNumber(data.tokens)} tokens ({seconds(took)}) · ranked by{' '}
-        {data.reranked ? 'Jev relevance' : 'BM25'}
-      </p>
-      <ol className="passages">
-        {data.passages.map((p) => (
-          <li key={`${p.title}:${p.ord}`} className="passage">
-            <header className="passage-head">
-              <h3>
-                <PageLink title={p.title} />
-                {p.heading && <span className="muted"> › {p.heading}</span>}
-              </h3>
-              <div className="meta-row">
-                <TypeBadge kind={p.kind} />
-                {p.confidence && <span className="chip">confidence {p.confidence}</span>}
-                <span>
-                  updated <RelTime iso={p.updated_at} />
-                </span>
-                {data.reranked && <span className="mono">relevance {p.score.toFixed(2)}</span>}
-              </div>
-            </header>
-            <div className="prose">
-              <Markdown>{p.text}</Markdown>
-            </div>
-          </li>
-        ))}
-      </ol>
-    </section>
   );
 }

@@ -8,7 +8,6 @@ RUN npm run build
 FROM rust:1.98-bookworm AS build
 WORKDIR /build
 COPY Cargo.toml Cargo.lock ./
-COPY client ./client
 COPY server/Cargo.toml server/build.rs ./server/
 COPY server/src ./server/src
 COPY --from=web /web/dist ./server/web/dist

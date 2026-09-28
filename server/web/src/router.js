@@ -1,12 +1,12 @@
 import { createContext, useContext, useEffect, useState } from 'react';
 import { query } from './api.js';
 
-export const VIEWS = ['dashboard', 'search', 'graph', 'timeline', 'activity', 'settings'];
+export const VIEWS = ['search', 'dashboard', 'graph', 'timeline', 'activity', 'settings', 'page'];
 
 // Routes live in the hash, e.g. #/timeline?author=x&page=Redis, so every view and open page can be linked.
 export function parseHash(hash = location.hash) {
   const [path, search = ''] = hash.replace(/^#\/?/, '').split('?');
-  return { view: VIEWS.includes(path) ? path : 'dashboard', params: Object.fromEntries(new URLSearchParams(search)) };
+  return { view: VIEWS.includes(path) ? path : 'search', params: Object.fromEntries(new URLSearchParams(search)) };
 }
 
 export function href(view, params = {}) {
@@ -23,10 +23,10 @@ export function useHashRoute() {
   return route;
 }
 
-export const RouteContext = createContext({ view: 'dashboard', params: {} });
+export const RouteContext = createContext({ view: 'search', params: {} });
 
-/** Link target that keeps the current view and opens `title` in the page drawer. */
+/** Link target that keeps the current view and opens `title` in the page drawer; a full page links on to full pages. */
 export function usePageHref() {
   const { view, params } = useContext(RouteContext);
-  return (title) => href(view, { ...params, page: title });
+  return (title) => (view === 'page' ? href('page', { title }) : href(view, { ...params, page: title }));
 }

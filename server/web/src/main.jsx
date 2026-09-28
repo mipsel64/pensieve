@@ -6,13 +6,13 @@ import '@fontsource-variable/jetbrains-mono/wght.css';
 import './style.css';
 import { api, logout, Unauthorized } from './api.js';
 import { href, RouteContext, useHashRoute } from './router.js';
-import { AuthContext, ErrorNote, Loading, Logo } from './ui.jsx';
+import { AuthContext, Empty, ErrorNote, Loading, Logo } from './ui.jsx';
 import { Login } from './Login.jsx';
 import { Dashboard } from './Dashboard.jsx';
 import { Timeline } from './Timeline.jsx';
 import { Activity } from './Activity.jsx';
 import { Search } from './Search.jsx';
-import { PageDrawer } from './PageDrawer.jsx';
+import { PageDrawer, PageView } from './Page.jsx';
 import { Settings } from './SettingsPage.jsx';
 import { SettingsProvider, useSettings } from './settings.jsx';
 
@@ -20,13 +20,13 @@ import { SettingsProvider, useSettings } from './settings.jsx';
 const GraphView = lazy(() => import('./Graph.jsx').then((m) => ({ default: m.GraphView })));
 
 const NAV = [
-  ['dashboard', 'Dashboard', LayoutDashboard],
   ['search', 'Search', SearchIcon],
+  ['dashboard', 'Dashboard', LayoutDashboard],
   ['graph', 'Graph', Network],
   ['timeline', 'Timeline', History],
   ['activity', 'Activity', ActivityIcon],
 ];
-const LABELS = { ...Object.fromEntries(NAV.map(([id, label]) => [id, label])), settings: 'Settings' };
+const LABELS = { ...Object.fromEntries(NAV.map(([id, label]) => [id, label])), settings: 'Settings', page: 'Page' };
 
 function App() {
   const [auth, setAuth] = useState({ state: 'checking' });
@@ -75,8 +75,9 @@ function Shell({ onSignOut }) {
   const signOut = () => flush().then(onSignOut);
 
   useEffect(() => {
-    document.title = params.page ? `${params.page} · Pensieve` : view === 'search' && params.q ? `${params.q} · Pensieve` : `${LABELS[view]} · Pensieve`;
-  }, [view, params.page, params.q]);
+    const name = params.page || (view === 'page' && params.title) || (view === 'search' && params.q) || LABELS[view];
+    document.title = `${name} · Pensieve`;
+  }, [view, params.page, params.title, params.q]);
 
   useEffect(() => {
     const onKey = (e) => {
@@ -101,6 +102,7 @@ function Shell({ onSignOut }) {
     activity: <Activity />,
     search: <Search params={params} />,
     settings: <Settings onSignOut={signOut} />,
+    page: params.title ? <PageView key={params.title} title={params.title} /> : <Empty>Open a page from search, the graph or a list to read it here.</Empty>,
   }[view];
 
   const link = (id, label, Icon) => (
@@ -117,7 +119,7 @@ function Shell({ onSignOut }) {
           Skip to content
         </button>
         <nav className="sidebar" aria-label="Main">
-          <a className="brand" href={href('dashboard')}>
+          <a className="brand" href={href('search')}>
             <Logo size={26} />
             <span>Pensieve</span>
           </a>
