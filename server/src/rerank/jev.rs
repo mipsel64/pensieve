@@ -1,9 +1,14 @@
 use std::time::Duration;
 
+use async_trait::async_trait;
 use serde_json::{Map, Value, json};
 use tokio::task::JoinSet;
 
-use crate::store::Hit;
+use super::Reranker;
+use crate::{
+    error::{Error, Result},
+    storage::Hit,
+};
 
 /// Candidates per request; keeps each request well under Jev's ~38 KB body budget.
 const BATCH: usize = 8;
@@ -33,6 +38,7 @@ impl Provider {
     }
 }
 
+/// TypeSafe's Jev model, asked one yes/no relevance question per hit.
 pub struct Jev {
     http: reqwest::Client,
     url: String,
@@ -45,7 +51,7 @@ impl Jev {
         let http = reqwest::Client::builder()
             .timeout(Duration::from_secs(15))
             .build()
-            .expect("tls backend");
+            .expect("internal error: cannot build HTTP client");
         let url = format!("{}/systemone", base_url.trim_end_matches('/'));
         Self {
             http,
@@ -53,44 +59,6 @@ impl Jev {
             model: model.into(),
             key,
         }
-    }
-
-    /// Relevant hits, most probable first, with `score` set to Jev's probability.
-    pub async fn rerank(
-        &self,
-        query: &str,
-        hits: &[Hit],
-        limit: usize,
-    ) -> Result<Vec<Hit>, String> {
-        let mut tasks = JoinSet::new();
-        for (batch, chunk) in hits.chunks(BATCH).enumerate() {
-            let request = self
-                .http
-                .post(&self.url)
-                .bearer_auth(&self.key)
-                .json(&self.request(query, chunk));
-            let len = chunk.len();
-            tasks.spawn(async move { (batch, probabilities(request, len).await) });
-        }
-        let mut scores = vec![0.0; hits.len()];
-        while let Some(joined) = tasks.join_next().await {
-            let (batch, result) = joined.map_err(|e| e.to_string())?;
-            for (i, p) in result?.into_iter().enumerate() {
-                scores[batch * BATCH + i] = p;
-            }
-        }
-        let mut ranked: Vec<_> = hits
-            .iter()
-            .zip(scores)
-            .filter(|(_, p)| *p > THRESHOLD)
-            .map(|(hit, score)| Hit {
-                score,
-                ..hit.clone()
-            })
-            .collect();
-        ranked.sort_by(|a, b| b.score.total_cmp(&a.score));
-        ranked.truncate(limit);
-        Ok(ranked)
     }
 
     fn request(&self, query: &str, hits: &[Hit]) -> Value {
@@ -123,19 +91,60 @@ impl Jev {
     }
 }
 
-async fn probabilities(request: reqwest::RequestBuilder, len: usize) -> Result<Vec<f64>, String> {
-    let response = request.send().await.map_err(|e| e.to_string())?;
+#[async_trait]
+impl Reranker for Jev {
+    async fn rerank(&self, query: &str, hits: &[Hit], limit: usize) -> Result<Vec<Hit>> {
+        let mut tasks = JoinSet::new();
+        for (batch, chunk) in hits.chunks(BATCH).enumerate() {
+            let request = self
+                .http
+                .post(&self.url)
+                .bearer_auth(&self.key)
+                .json(&self.request(query, chunk));
+            let len = chunk.len();
+            tasks.spawn(async move { (batch, probabilities(request, len).await) });
+        }
+        let mut scores = vec![0.0; hits.len()];
+        while let Some(joined) = tasks.join_next().await {
+            let (batch, result) = joined.map_err(|e| Error::rerank(e.to_string()))?;
+            for (i, p) in result?.into_iter().enumerate() {
+                scores[batch * BATCH + i] = p;
+            }
+        }
+        let mut ranked: Vec<_> = hits
+            .iter()
+            .zip(scores)
+            .filter(|(_, p)| *p > THRESHOLD)
+            .map(|(hit, score)| Hit {
+                score,
+                ..hit.clone()
+            })
+            .collect();
+        ranked.sort_by(|a, b| b.score.total_cmp(&a.score));
+        ranked.truncate(limit);
+        Ok(ranked)
+    }
+}
+
+async fn probabilities(request: reqwest::RequestBuilder, len: usize) -> Result<Vec<f64>> {
+    let response = request
+        .send()
+        .await
+        .map_err(|e| Error::rerank(e.to_string()))?;
     let status = response.status();
     if !status.is_success() {
-        return Err(format!("HTTP {status}"));
+        return Err(Error::rerank(format!("Jev returned HTTP {status}")));
     }
-    let body: Value = response.json().await.map_err(|e| e.to_string())?;
+    let body: Value = response
+        .json()
+        .await
+        .map_err(|e| Error::rerank(e.to_string()))?;
     (0..len)
         .map(|i| {
             body["answers"][format!("p{i}").as_str()]["noul"]
                 .as_f64()
                 .filter(|p| (0.0..=1.0).contains(p))
-                .ok_or_else(|| format!("missing or invalid answer p{i}"))
+                .ok_or_else(|| Error::rerank(format!("Jev returned no valid answer for p{i}")))
         })
         .collect()
 }

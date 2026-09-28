@@ -1,0 +1,14 @@
+[Unit]
+Description=Pensieve memory server
+
+[Service]
+Type=exec
+ExecStart=%h/.local/bin/pensieve-server serve
+Environment=HOME=%h
+EnvironmentFile=%h/.config/pensieve/environment
+Restart=on-failure
+RestartSec=5s
+UMask=0077
+
+[Install]
+WantedBy=default.target

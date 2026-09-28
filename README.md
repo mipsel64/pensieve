@@ -10,21 +10,28 @@ Search uses SQLite FTS5 BM25. With a Jev key, the top 40 BM25 matches are sent t
 ## Server
 
 ```sh
-cargo build --release
-export PENSIEVE_TOKEN="$(openssl rand -hex 32)"      # every client uses the same token
-target/release/pensieve-server import ~/vaults/wiki   # optional, one-off; skips index.md and log.md
-target/release/pensieve-server serve                  # http://127.0.0.1:7878
+make setup      # installs pensieve-server and pensieve to ~/.local/bin and starts the service
 ```
 
-| Env | Default | |
+On first run, `make setup` creates `~/.config/pensieve/environment` (mode 0600) with a random `PENSIEVE_TOKEN`. Every client needs this token. The service is a launchd daemon on macOS and a systemd user service on Linux; both read their settings from this file.
+
+| Setting | Default | |
 |---|---|---|
-| `PENSIEVE_TOKEN` | required | Bearer token for the API and web UI (at least 16 characters) |
+| `PENSIEVE_TOKEN` | generated | Bearer token for the API and web UI (at least 16 characters) |
 | `PENSIEVE_DB` | `~/.local/share/pensieve/pensieve.db` | SQLite file |
 | `PENSIEVE_LISTEN` | `127.0.0.1:7878` | |
 | `PENSIEVE_JEV_KEY` | unset (BM25 only) | Key for the chosen provider |
 | `PENSIEVE_JEV_PROVIDER` | `vercel` | `vercel`, `typesafe`, `openrouter` or `opencode` |
 
-To reach the server from other devices, keep it bound to loopback and publish it on your tailnet with `tailscale serve --bg 7878`. `export <dir>` writes every page back out as `<title>.md`.
+| Command | |
+|---|---|
+| `make` / `make install` | Build, or build and install both binaries. Client-only devices need just this |
+| `make restart [REBUILD=1]` / `make status` | Restart the service (rebuild first with `REBUILD=1`) or show its state |
+| `make clean` | Remove the service and binaries; keeps the config and database |
+
+Import an existing wiki once with `pensieve-server import ~/vaults/wiki`; it skips `index.md` and `log.md`. `pensieve-server export <dir>` writes every page back out as `<title>.md`. To reach the server from other devices, keep it on loopback and run `tailscale serve --bg 7878`. On Linux, run `loginctl enable-linger` so the service keeps running after you log out.
+
+New backends implement `storage::Storage` and must pass `storage::conformance::check`. New rerankers implement `rerank::Reranker`.
 
 ## Agents
 
