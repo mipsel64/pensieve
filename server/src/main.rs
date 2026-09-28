@@ -10,7 +10,7 @@ mod storage;
 use std::{
     collections::HashMap,
     fs,
-    os::unix::fs::{DirBuilderExt, OpenOptionsExt},
+    os::unix::fs::{DirBuilderExt, OpenOptionsExt, PermissionsExt},
     path::{Path, PathBuf},
     process::ExitCode,
     sync::Arc,
@@ -132,13 +132,25 @@ fn create_private(db: &Path) -> std::io::Result<()> {
         .open(db)
     {
         Err(e) if e.kind() != std::io::ErrorKind::AlreadyExists => Err(e),
-        _ => Ok(()),
+        Err(_) => {
+            // Existing files keep their mode: it may be deliberate, so warn rather than change it.
+            let mode = fs::metadata(db)?.permissions().mode();
+            if mode & 0o077 != 0 {
+                eprintln!(
+                    "pensieve-server: warning: {} is readable by other users (mode {:o}); run chmod 600 on it",
+                    db.display(),
+                    mode & 0o777
+                );
+            }
+            Ok(())
+        }
+        Ok(_) => Ok(()),
     }
 }
 
 async fn import(storage: &dyn Storage, dir: &Path) -> CliResult {
     let (mut imported, mut unchanged, mut failed) = (0, 0, 0);
-    let mut seen = HashMap::new();
+    let mut seen: HashMap<String, PathBuf> = HashMap::new();
     let summary = format!(
         "Import from {}",
         dir.file_name().unwrap_or(dir.as_os_str()).to_string_lossy()
@@ -161,8 +173,9 @@ async fn import(storage: &dyn Storage, dir: &Path) -> CliResult {
         {
             continue;
         }
-        // Titles are case-insensitive, so Foo.md and foo.md would overwrite each other.
-        if let Some(first) = seen.insert(title.to_ascii_lowercase(), path.clone()) {
+        // Titles are trimmed and case-insensitive, so Foo.md, foo.md and "Foo .md" are one page.
+        let key = title.trim().to_ascii_lowercase();
+        if let Some(first) = seen.get(&key) {
             eprintln!("skip {}: same title as {}", path.display(), first.display());
             failed += 1;
             continue;
@@ -176,7 +189,11 @@ async fn import(storage: &dyn Storage, dir: &Path) -> CliResult {
             }
         };
         let before = storage.page(title).await.map(|p| p.rev).ok();
-        match storage.put(title, &content, None, change).await {
+        let saved = storage.put(title, &content, None, change).await;
+        if saved.is_ok() {
+            seen.insert(key, path.clone());
+        }
+        match saved {
             Ok(rev) if Some(rev) == before => unchanged += 1,
             Ok(_) => imported += 1,
             Err(e) => {

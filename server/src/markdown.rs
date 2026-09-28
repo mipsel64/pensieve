@@ -113,8 +113,14 @@ fn headings(content: &str) -> Vec<Heading<'_>> {
         if !(1..=3).contains(&level) || !(rest.is_empty() || rest.starts_with([' ', '\t'])) {
             continue;
         }
-        // An optional closing run of `#` is not part of the heading.
-        let text = rest.trim().trim_end_matches('#').trim_end();
+        // A closing run of `#` after whitespace is not part of the heading; `## C#` keeps its `#`.
+        let text = rest.trim();
+        let unclosed = text.trim_end_matches('#');
+        let text = if unclosed.is_empty() || unclosed.ends_with([' ', '\t']) {
+            unclosed.trim_end()
+        } else {
+            text
+        };
         let label = match (level, parent) {
             (3, Some(parent)) => format!("{parent} › {text}"),
             _ => text.to_owned(),
@@ -139,7 +145,10 @@ fn headings(content: &str) -> Vec<Heading<'_>> {
 /// belongs to the lead section.
 fn section_headings(content: &str) -> Vec<Heading<'_>> {
     let mut headings = headings(content);
-    if headings.first().is_some_and(|h| h.level == 1) {
+    let title = headings
+        .first()
+        .is_some_and(|h| h.level == 1 && content[body_start(content)..h.start].trim().is_empty());
+    if title {
         headings.remove(0);
     }
     headings
@@ -206,29 +215,61 @@ pub fn append_to_section(content: &str, name: &str, text: &str) -> Option<String
 /// escaped. The first spelling wins among ASCII case variants.
 pub fn wikilinks(content: &str) -> Vec<String> {
     let mut seen = HashSet::new();
+    prose_lines(content, 0)
+        .into_iter()
+        .flat_map(|(_, line)| line_links(line))
+        .filter(|target| seen.insert(target.to_ascii_lowercase()))
+        .map(str::to_owned)
+        .collect()
+}
+
+/// Link targets in one line, skipping backslash escapes and inline code spans.
+fn line_links(line: &str) -> Vec<&str> {
+    let bytes = line.as_bytes();
     let mut links = Vec::new();
-    for (_, line) in prose_lines(content, 0) {
-        // Even-numbered segments between backticks are outside inline code.
-        for text in line.split('`').step_by(2) {
-            let mut rest = text;
-            while let Some(open) = rest.find("[[") {
-                let escaped = rest[..open].ends_with('\\');
-                rest = &rest[open + 2..];
-                let Some(close) = rest.find("]]") else { break };
-                let target = rest[..close]
-                    .split(['|', '#'])
-                    .next()
-                    .unwrap_or_default()
-                    .trim();
-                let target = target.strip_suffix(".md").unwrap_or(target);
-                if !escaped && !target.is_empty() && seen.insert(target.to_ascii_lowercase()) {
-                    links.push(target.to_owned());
-                }
-                rest = &rest[close + 2..];
+    let mut i = 0;
+    while i < bytes.len() {
+        match bytes[i] {
+            b'\\' => i += 2,
+            b'`' => {
+                let run = backticks(bytes, i);
+                // A code span needs a closing run of the same length; otherwise the backticks are text.
+                let close = (i + run..bytes.len()).find(|&j| {
+                    bytes[j] == b'`' && bytes[j - 1] != b'`' && backticks(bytes, j) == run
+                });
+                i = close.map_or(i + run, |j| j + run);
             }
+            b'[' if bytes.get(i + 1) == Some(&b'[') => {
+                let rest = &line[i + 2..];
+                match (rest.find("]]"), rest.find("[[")) {
+                    // A second `[[` before the close means this opener is unclosed; retry from there.
+                    (Some(close), reopen) if reopen.is_none_or(|r| r > close) => {
+                        links.extend(link_target(&rest[..close]));
+                        i += 2 + close + 2;
+                    }
+                    _ => i += 2,
+                }
+            }
+            _ => i += 1,
         }
     }
     links
+}
+
+fn backticks(bytes: &[u8], start: usize) -> usize {
+    bytes[start..].iter().take_while(|&&b| b == b'`').count()
+}
+
+/// The page a link's inner text points to. Obsidian escapes the alias pipe inside tables as `\|`.
+fn link_target(inner: &str) -> Option<&str> {
+    let target = inner
+        .split(['|', '#'])
+        .next()?
+        .trim()
+        .trim_end_matches('\\')
+        .trim_end();
+    let target = target.strip_suffix(".md").unwrap_or(target);
+    (!target.is_empty()).then_some(target)
 }
 
 /// Whether `text` contains `phrase` as whole words, ignoring case.
@@ -310,6 +351,13 @@ mod tests {
     }
 
     #[test]
+    fn heading_edge_cases() {
+        let page = "Intro first.\n# Details\nMore.\n## C#\nSharp.\n## Deploy ##\nGo.\n";
+        assert_eq!(section_names(page), ["Details", "C#", "Deploy"]);
+        assert!(section_range(page, "C#").is_some());
+    }
+
+    #[test]
     fn links_and_mentions() {
         let text = "---\nsources: [\"[[Source]]\"]\n---\nSee [[ClickHouse|CH]], [[Missing Page#x]] and [[missing page]].\n\
                     ```sh\n[[ -f x ]]\n```\n~~~\n[[Tilde]]\n~~~\nUse `[[Example]]` or \\[[Escaped]] literally, then [[Real]].";
@@ -317,6 +365,21 @@ mod tests {
             wikilinks(text),
             ["Source", "ClickHouse", "Missing Page", "Real"]
         );
+
+        let edge_cases = [
+            (
+                r"| [[Meteora Logger Crate\|`logger`]] |",
+                vec!["Meteora Logger Crate"],
+            ),
+            ("``[[Double]]`` then [[After]]", vec!["After"]),
+            (r"\`[[Literal backtick]]`", vec!["Literal backtick"]),
+            ("See ` and [[Stray]]", vec!["Stray"]),
+            (r"\\[[Even]] and \[[Odd]]", vec!["Even"]),
+            ("[[unfinished [[Inner]]", vec!["Inner"]),
+        ];
+        for (line, want) in edge_cases {
+            assert_eq!(wikilinks(line), want, "{line}");
+        }
         assert!(mentions("We use Redis Cluster here.", "redis cluster"));
         assert!(!mentions("Rediscover it.", "Redis"));
         assert!(mentions("Ends with Redis", "redis"));

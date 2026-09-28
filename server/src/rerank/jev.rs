@@ -14,6 +14,8 @@ const BATCH: usize = 8;
 const MAX_REQUEST_BYTES: usize = 32_000;
 /// Longest query sent; questions are short, and the query is repeated in every batch.
 const MAX_QUERY_BYTES: usize = 2_000;
+/// Longest label sent; labels appear twice per candidate.
+const MAX_LABEL_BYTES: usize = 500;
 /// Jev answers are probabilities; keep pages it judges more likely relevant than not.
 const THRESHOLD: f64 = 0.5;
 
@@ -65,6 +67,26 @@ impl Jev {
         }
     }
 
+    /// `candidate` shortened until a request for it alone is within `MAX_REQUEST_BYTES`, since JSON
+    /// escaping can make text far longer than its byte length.
+    fn fit(&self, query: &str, candidate: &Candidate) -> Candidate {
+        let mut fitted = Candidate {
+            label: clip(&candidate.label, MAX_LABEL_BYTES).to_owned(),
+            text: candidate.text.clone(),
+        };
+        while !fitted.text.is_empty()
+            && self
+                .request(query, std::slice::from_ref(&fitted))
+                .to_string()
+                .len()
+                > MAX_REQUEST_BYTES
+        {
+            let half = clip(&fitted.text, fitted.text.len() / 2).len();
+            fitted.text.truncate(half);
+        }
+        fitted
+    }
+
     fn request(&self, query: &str, candidates: &[Candidate]) -> Value {
         let passages: Vec<_> = candidates
             .iter()
@@ -98,15 +120,12 @@ impl Jev {
 #[async_trait]
 impl Reranker for Jev {
     async fn rerank(&self, query: &str, candidates: &[Candidate]) -> Result<Vec<(usize, f64)>> {
-        let mut end = query.len().min(MAX_QUERY_BYTES);
-        while !query.is_char_boundary(end) {
-            end -= 1;
-        }
-        let query = &query[..end];
+        let query = clip(query, MAX_QUERY_BYTES);
+        let candidates: Vec<_> = candidates.iter().map(|c| self.fit(query, c)).collect();
         let mut tasks = JoinSet::new();
         let mut start = 0;
         while start < candidates.len() {
-            // Grow the batch while it fits; a single oversized candidate still goes alone.
+            // Grow the batch while it fits; every candidate fits alone after `fit`.
             let mut len = 1;
             while start + len < candidates.len()
                 && len < BATCH
@@ -138,6 +157,15 @@ impl Reranker for Jev {
         ranked.sort_by(|a, b| b.1.total_cmp(&a.1));
         Ok(ranked)
     }
+}
+
+/// The longest prefix of `text` within `max` bytes, on a character boundary.
+fn clip(text: &str, max: usize) -> &str {
+    let mut end = text.len().min(max);
+    while !text.is_char_boundary(end) {
+        end -= 1;
+    }
+    &text[..end]
 }
 
 async fn probabilities(request: reqwest::RequestBuilder, len: usize) -> Result<Vec<f64>> {
@@ -223,5 +251,9 @@ mod tests {
             jev.rerank(&"q".repeat(5_000), &large).await.unwrap(),
             [(4, 0.9)]
         );
+
+        // Control characters escape to six bytes each: 8,000 of them make one candidate too big alone.
+        let escaped = [candidate(0, 0, 99, &"\u{1}".repeat(8_000))];
+        assert_eq!(jev.rerank("query", &escaped).await.unwrap(), [(0, 0.9)]);
     }
 }

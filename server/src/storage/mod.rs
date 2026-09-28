@@ -65,12 +65,11 @@ pub trait Storage: Send + Sync {
         }
         let page = self.page(title).await?;
         // Counted with overlaps: in "aaa", "aa" is ambiguous.
-        let found = page
-            .content
-            .char_indices()
-            .filter(|(i, _)| page.content[*i..].starts_with(old))
-            .take(2)
-            .count();
+        let content = &page.content;
+        let found = content.find(old).map_or(0, |i| {
+            let next = i + content[i..].chars().next().map_or(1, char::len_utf8);
+            if content[next..].contains(old) { 2 } else { 1 }
+        });
         match found {
             0 => Err(Error::invalid("cannot edit: old_text not found in page")),
             1 => {
