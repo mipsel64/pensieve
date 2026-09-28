@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { History, Maximize2, Network, X } from 'lucide-react';
 import { query } from './api.js';
 import { href } from './router.js';
@@ -26,6 +26,105 @@ export function withoutTitle(body, title) {
   return heading && heading[1].trim().toLowerCase() === title.toLowerCase() ? body.slice(heading[0].length) : body;
 }
 
+const WIDTH_KEY = 'pensieve.drawerWidth';
+const MIN_WIDTH = 320;
+// The view beside the panel keeps at least this much room.
+const MIN_CONTENT = 360;
+
+function applyWidth(px) {
+  if (px) document.documentElement.style.setProperty('--drawer-w', `${px}px`);
+  else document.documentElement.style.removeProperty('--drawer-w');
+}
+
+// Per browser rather than in settings: the right width depends on this screen.
+function saveWidth(px) {
+  try {
+    if (px) localStorage.setItem(WIDTH_KEY, px);
+    else localStorage.removeItem(WIDTH_KEY);
+  } catch {
+    // Without storage (some private windows) the width lasts until reload.
+  }
+}
+
+try {
+  const saved = Number(localStorage.getItem(WIDTH_KEY));
+  if (Number.isFinite(saved) && saved >= MIN_WIDTH) applyWidth(saved);
+} catch {
+  // Same as no stored width.
+}
+
+function ResizeHandle() {
+  const handle = useRef(null);
+  const drag = useRef(null);
+  const [aria, setAria] = useState({ now: 0, max: 0 });
+
+  const limit = () => {
+    const nav = document.querySelector('.sidebar')?.getBoundingClientRect().right ?? 0;
+    return Math.round(matchMedia('(max-width: 1180px)').matches ? innerWidth * 0.92 : innerWidth - nav - MIN_CONTENT);
+  };
+  const clamp = (px, max) => Math.round(Math.min(Math.max(px, MIN_WIDTH), max));
+  const commit = (px) => {
+    applyWidth(px);
+    saveWidth(px);
+    setAria({ now: px ?? handle.current.parentElement.offsetWidth, max: limit() });
+  };
+  const endDrag = () => {
+    const d = drag.current;
+    drag.current = null;
+    document.body.classList.remove('resizing');
+    if (!d) return;
+    cancelAnimationFrame(d.frame);
+    if (d.width) commit(d.width);
+  };
+
+  useLayoutEffect(() => setAria({ now: handle.current.parentElement.offsetWidth, max: limit() }), []);
+  // Escape can close the panel mid-drag, before the pointer capture is released.
+  useEffect(() => endDrag, []);
+
+  return (
+    <div
+      ref={handle}
+      className="drawer-resize"
+      role="separator"
+      aria-orientation="vertical"
+      aria-label="Resize page panel"
+      aria-valuemin={MIN_WIDTH}
+      aria-valuemax={aria.max}
+      aria-valuenow={aria.now}
+      title="Drag to resize. Double-click to reset."
+      tabIndex={0}
+      onPointerDown={(e) => {
+        if (e.button !== 0) return;
+        e.preventDefault();
+        e.currentTarget.setPointerCapture(e.pointerId);
+        drag.current = { max: limit(), width: 0, frame: 0 };
+        document.body.classList.add('resizing');
+      }}
+      onPointerMove={(e) => {
+        const d = drag.current;
+        if (!d) return;
+        d.width = clamp(innerWidth - e.clientX, d.max);
+        d.frame ||= requestAnimationFrame(() => {
+          d.frame = 0;
+          applyWidth(d.width);
+          setAria({ now: d.width, max: d.max });
+        });
+      }}
+      onLostPointerCapture={endDrag}
+      onDoubleClick={() => commit(null)}
+      onKeyDown={(e) => {
+        const step = e.shiftKey ? 96 : 32;
+        const width = handle.current.parentElement.offsetWidth;
+        if (e.key === 'ArrowLeft') commit(clamp(width + step, limit()));
+        else if (e.key === 'ArrowRight') commit(clamp(width - step, limit()));
+        else if (e.key === 'Enter') commit(null);
+        else return;
+        e.preventDefault();
+      }}
+    />
+  );
+}
+
 export function PageDrawer({ title, closeHref }) {
   const p = usePage(title);
   const heading = useRef(null);
@@ -39,6 +138,7 @@ export function PageDrawer({ title, closeHref }) {
 
   return (
     <aside className="drawer" aria-labelledby="drawer-title">
+      <ResizeHandle />
       <header className="drawer-header">
         <div className="drawer-title">
           <h2 id="drawer-title" tabIndex={-1} ref={heading}>
