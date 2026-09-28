@@ -1,6 +1,9 @@
 mod config;
 mod error;
+mod markdown;
+mod mcp;
 mod rerank;
+mod retrieval;
 mod server;
 mod storage;
 
@@ -18,7 +21,7 @@ use crate::{
     config::Config,
     rerank::{Reranker, jev::Jev},
     server::App,
-    storage::{SqliteStorage, Storage},
+    storage::{Change, SqliteStorage, Storage},
 };
 
 type CliResult = Result<(), Box<dyn std::error::Error>>;
@@ -115,6 +118,14 @@ async fn run() -> CliResult {
 
 async fn import(storage: &dyn Storage, dir: &Path) -> CliResult {
     let (mut imported, mut unchanged) = (0, 0);
+    let summary = format!(
+        "Import from {}",
+        dir.file_name().unwrap_or(dir.as_os_str()).to_string_lossy()
+    );
+    let change = Change {
+        author: "import",
+        summary: Some(&summary),
+    };
     for entry in fs::read_dir(dir)? {
         let path = entry?.path();
         let (Some(title), Some("md")) = (
@@ -134,7 +145,7 @@ async fn import(storage: &dyn Storage, dir: &Path) -> CliResult {
             continue;
         };
         let before = storage.page(title).await.map(|p| p.rev).ok();
-        match storage.put(title, &content, None, "import").await {
+        match storage.put(title, &content, None, change).await {
             Ok(rev) if Some(rev) == before => unchanged += 1,
             Ok(_) => imported += 1,
             Err(e) => eprintln!("skip {}: {e}", path.display()),

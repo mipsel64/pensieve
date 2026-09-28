@@ -15,12 +15,12 @@ use subtle::ConstantTimeEq;
 
 use crate::{
     error::Result,
+    mcp,
     rerank::Reranker,
-    storage::{Graph, Page, Storage},
+    retrieval,
+    storage::{Change, Graph, HistoryFilter, Page, Revision, Stats, Storage},
 };
 
-/// Candidate pool handed to the reranker; recall is bounded by keyword search at this depth.
-const CANDIDATES: usize = 40;
 const CSP: &str = "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; frame-ancestors 'none'";
 static WEB: Dir<'_> = include_dir!("$CARGO_MANIFEST_DIR/web/dist");
 
@@ -36,6 +36,9 @@ pub fn router(app: Arc<App>) -> Router {
         .route("/graph", get(graph))
         .route("/pages/{title}", get(read).put(write))
         .route("/pages/{title}/edit", post(edit))
+        .route("/history", get(history))
+        .route("/stats", get(stats))
+        .route("/mcp", post(mcp))
         .route_layer(middleware::from_fn_with_state(app.clone(), auth));
     Router::new()
         .nest("/api", api)
@@ -106,22 +109,12 @@ async fn search(
     let limit = params.limit.unwrap_or(10).clamp(1, 50);
     let reranker = app
         .reranker
-        .as_ref()
-        .filter(|_| params.rerank.unwrap_or(true) && !params.q.trim().is_empty());
-    let candidates = if reranker.is_some() {
-        CANDIDATES.max(limit)
-    } else {
-        limit
-    };
-    let mut hits = app.storage.search(&params.q, candidates).await?;
-    if let Some(reranker) = reranker {
-        match reranker.rerank(&params.q, &hits, limit).await {
-            Ok(ranked) => return Ok(Json(json!({ "reranked": true, "hits": ranked }))),
-            Err(e) => eprintln!("{e}; falling back to keyword ranking"),
-        }
-    }
-    hits.truncate(limit);
-    Ok(Json(json!({ "reranked": false, "hits": hits })))
+        .as_deref()
+        .filter(|_| params.rerank.unwrap_or(true));
+    let found = retrieval::search(app.storage.as_ref(), reranker, &params.q, limit).await?;
+    Ok(Json(
+        json!({ "reranked": found.reranked, "hits": found.hits }),
+    ))
 }
 
 async fn graph(State(app): State<Arc<App>>) -> Result<Json<Graph>> {
@@ -141,6 +134,7 @@ async fn read(State(app): State<Arc<App>>, Path(title): Path<String>) -> Result<
 struct WriteBody {
     content: String,
     base_rev: Option<i64>,
+    summary: Option<String>,
 }
 
 async fn write(
@@ -149,10 +143,18 @@ async fn write(
     headers: HeaderMap,
     Json(body): Json<WriteBody>,
 ) -> Result<Json<Value>> {
-    let base_rev = Some(body.base_rev.unwrap_or(0));
+    let change = Change {
+        author: &agent(&headers),
+        summary: body.summary.as_deref(),
+    };
     let rev = app
         .storage
-        .put(&title, &body.content, base_rev, &agent(&headers))
+        .put(
+            &title,
+            &body.content,
+            Some(body.base_rev.unwrap_or(0)),
+            change,
+        )
         .await?;
     Ok(Json(json!({ "title": title, "rev": rev })))
 }
@@ -161,6 +163,7 @@ async fn write(
 struct EditBody {
     old_text: String,
     new_text: String,
+    summary: Option<String>,
 }
 
 async fn edit(
@@ -169,11 +172,54 @@ async fn edit(
     headers: HeaderMap,
     Json(body): Json<EditBody>,
 ) -> Result<Json<Value>> {
+    let change = Change {
+        author: &agent(&headers),
+        summary: body.summary.as_deref(),
+    };
     let rev = app
         .storage
-        .edit(&title, &body.old_text, &body.new_text, &agent(&headers))
+        .edit(&title, &body.old_text, &body.new_text, change)
         .await?;
     Ok(Json(json!({ "title": title, "rev": rev })))
+}
+
+#[derive(Deserialize)]
+struct HistoryParams {
+    title: Option<String>,
+    author: Option<String>,
+    before: Option<i64>,
+    limit: Option<usize>,
+}
+
+async fn history(
+    State(app): State<Arc<App>>,
+    Query(params): Query<HistoryParams>,
+) -> Result<Json<Vec<Revision>>> {
+    let filter = HistoryFilter {
+        title: params.title,
+        author: params.author,
+        before: params.before,
+    };
+    Ok(Json(
+        app.storage
+            .history(&filter, params.limit.unwrap_or(50).clamp(1, 200))
+            .await?,
+    ))
+}
+
+async fn stats(State(app): State<Arc<App>>) -> Result<Json<Stats>> {
+    Ok(Json(app.storage.stats().await?))
+}
+
+async fn mcp(
+    State(app): State<Arc<App>>,
+    headers: HeaderMap,
+    Json(message): Json<Value>,
+) -> Response {
+    match mcp::handle(&app, &agent(&headers), &message).await {
+        Some(reply) => Json(reply).into_response(),
+        None => StatusCode::ACCEPTED.into_response(),
+    }
 }
 
 fn agent(headers: &HeaderMap) -> String {

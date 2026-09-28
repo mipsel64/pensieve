@@ -2,10 +2,10 @@
 
 Persistent memory for agents, shared across devices. It follows the [LLM Wiki](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f) pattern: agents keep a Markdown wiki connected by `[[links]]`. Pages are stored in one SQLite database on a server instead of a folder that has to be synced between machines.
 
-- `pensieve-server` stores pages in SQLite and keeps revision history and the link graph. It serves the HTTP API and a web UI for search, reading and a link-graph view.
-- `pensieve` is a stdio MCP server that each agent runs locally. It forwards requests to `pensieve-server`.
+- `pensieve-server` stores pages in SQLite and keeps revision history, the link graph and a section index. It implements the MCP tools and serves the HTTP API and a web UI for search, reading and a link-graph view.
+- `pensieve` is the stdio MCP server each agent runs. It only forwards JSON-RPC to `pensieve-server`, so tools and agent guidance change with a server upgrade, without reinstalling on every device.
 
-Search uses SQLite FTS5 BM25. With a Jev key, the top 40 BM25 matches are sent to [Jev](https://vercel.com/ai-gateway/models/jev), which scores how relevant each page is. Pages it judges unlikely to help are dropped, as in [jevgrep](https://github.com/dzhng/jevgrep). If Jev fails, search falls back to BM25.
+Pages are indexed per `##`/`###` section with SQLite FTS5 BM25. With a Jev key, `recall` sends the top 40 matching sections to [Jev](https://vercel.com/ai-gateway/models/jev), which scores how likely each is to help, and drops the unlikely ones, as in [jevgrep](https://github.com/dzhng/jevgrep). If Jev fails, results fall back to BM25 order.
 
 ## Server
 
@@ -70,9 +70,16 @@ env = { PENSIEVE_URL = "https://my-server.tailnet.ts.net", PENSIEVE_TOKEN = "...
 
 Tools:
 
-- `search`: find pages by query.
-- `read`: return a page with its rev, links and backlinks.
-- `write`: create a page or replace one. Replacing needs `base_rev`, so a stale write from one device can't overwrite a newer change from another.
-- `edit`: replace one exact snippet.
+| Tool | |
+|---|---|
+| `recall` | The passages most relevant to a question, ranked, within a token budget (default 2,000). The agent adds keywords (synonyms, identifiers, likely titles) to catch notes that use different words. Lists related pages that didn't fit. |
+| `search` | Keyword (BM25) search returning page titles and snippets. |
+| `read` | A page or one section, with its type, rev, section list, links and backlinks. |
+| `write` | Create or replace a page. Needs a one-line `summary`, and `base_rev` when replacing, so a stale write from one device can't overwrite a newer change from another. |
+| `edit` | Replace one exact snippet, or append to the end of a named section. Needs a `summary`. |
 
-Each write is recorded with the agent and host that made it. Each page read through the API (MCP `read` or the web UI) updates the page's last visit time, `visited_at`, so stale pages can be found later. The content of a page titled `AGENTS` is appended to the MCP server instructions, so the wiki schema is sent to every agent that connects.
+`write` and `edit` reply with what to fix: links to missing pages, a missing `type`, and pages mentioned without a link in either direction. The `ingest` prompt (`/mcp__pensieve__ingest <source>` in Claude Code) walks an agent through filing a source.
+
+Agent guidance ships with the server. The MCP instructions cover when to recall and when to write, the frontmatter fields (`type`, `tags`, `sources`, `confidence`) and linking conventions, followed by a generated map of memory: page counts per type, the most linked pages and recent writes. `type` is one of `topic`, `entity`, `source`, `synthesis`, `runbook`, `incident` or `audit`; other values are rejected. Pensieve tracks timestamps, backlinks and history itself, so the index, log and hub pages a file-based LLM wiki needs aren't maintained by hand.
+
+Each write is recorded with the agent and host that made it and its summary. Each page read through `read`, `recall` or the web UI updates its last visit time, `visited_at`, so stale pages can be found later.

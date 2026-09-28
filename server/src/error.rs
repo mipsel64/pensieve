@@ -14,7 +14,7 @@ pub enum Error {
         rev: i64,
     },
     Invalid {
-        reason: &'static str,
+        reason: String,
     },
     Storage {
         source: Box<dyn std::error::Error + Send + Sync>,
@@ -28,6 +28,12 @@ impl Error {
     pub fn storage(source: impl std::error::Error + Send + Sync + 'static) -> Self {
         Self::Storage {
             source: Box::new(source),
+        }
+    }
+
+    pub fn invalid(reason: impl Into<String>) -> Self {
+        Self::Invalid {
+            reason: reason.into(),
         }
     }
 
