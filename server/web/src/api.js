@@ -1,10 +1,11 @@
 export class Unauthorized extends Error {}
 
-export async function api(path, { method = 'GET', body } = {}) {
+export async function api(path, { method = 'GET', body, keepalive } = {}) {
   const res = await fetch(`/api${path}`, {
     method,
     headers: body === undefined ? undefined : { 'content-type': 'application/json' },
     body: body === undefined ? undefined : JSON.stringify(body),
+    keepalive,
   });
   if (res.status === 401) throw new Unauthorized('Sign in again.');
   if (!res.ok) throw new Error((await res.text()) || res.statusText);

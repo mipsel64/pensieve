@@ -46,6 +46,11 @@ pub trait Storage: Send + Sync {
     /// Every page as `(title, content)`, ordered by title.
     async fn pages(&self) -> Result<Vec<(String, String)>>;
 
+    /// The web UI's settings as saved JSON, if any were saved.
+    async fn settings(&self) -> Result<Option<String>>;
+
+    async fn save_settings(&self, json: &str) -> Result<()>;
+
     /// Validates and writes a page, returning its rev.
     async fn put(
         &self,
@@ -173,6 +178,7 @@ pub struct Hit {
     pub updated_at: String,
     pub snippet: String,
     pub score: f64,
+    pub kind: Option<String>,
     /// Leading page text, sent to rerankers.
     #[serde(skip)]
     pub excerpt: String,

@@ -102,6 +102,28 @@ impl Storage for SqliteStorage {
     async fn pages(&self) -> Result<Vec<(String, String)>> {
         self.run(|conn| pages(conn)).await
     }
+
+    async fn settings(&self) -> Result<Option<String>> {
+        self.run(|conn| {
+            Ok(conn
+                .query_row("SELECT value FROM settings WHERE id = 1", [], |r| r.get(0))
+                .optional()?)
+        })
+        .await
+    }
+
+    async fn save_settings(&self, json: &str) -> Result<()> {
+        let json = json.to_owned();
+        self.run(move |conn| {
+            conn.execute(
+                "INSERT INTO settings (id, value) VALUES (1, ?1)
+                 ON CONFLICT (id) DO UPDATE SET value = excluded.value",
+                [json],
+            )?;
+            Ok(())
+        })
+        .await
+    }
 }
 
 impl From<rusqlite::Error> for Error {
@@ -259,7 +281,7 @@ fn search(conn: &Connection, query: &str, limit: usize) -> Result<Vec<Hit>> {
     let Some(query) = fts_query(&words) else {
         return conn
             .prepare_cached(
-                "SELECT p.title, p.rev, p.updated_at, substr(p.content, 1, 200), 0.0, ''
+                "SELECT p.title, p.rev, p.updated_at, substr(p.content, 1, 200), 0.0, '', p.type
                  FROM pages p JOIN revisions r ON r.title = p.title AND r.rev = p.rev
                  ORDER BY r.rowid DESC LIMIT ?1",
             )?
@@ -269,7 +291,7 @@ fn search(conn: &Connection, query: &str, limit: usize) -> Result<Vec<Hit>> {
     };
     conn.prepare_cached(
         "SELECT p.title, p.rev, p.updated_at, snippet(pages_fts, -1, '«', '»', '…', 24),
-                -bm25(pages_fts, 10.0, 1.0), substr(p.content, 1, ?3)
+                -bm25(pages_fts, 10.0, 1.0), substr(p.content, 1, ?3), p.type
          FROM pages_fts JOIN pages p ON p.id = pages_fts.rowid
          WHERE pages_fts MATCH ?1 ORDER BY 5 DESC LIMIT ?2",
     )?
@@ -488,6 +510,7 @@ fn hit(r: &Row) -> rusqlite::Result<Hit> {
         snippet: r.get(3)?,
         score: r.get(4)?,
         excerpt: r.get(5)?,
+        kind: r.get(6)?,
     })
 }
 

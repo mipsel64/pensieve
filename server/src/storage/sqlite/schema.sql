@@ -34,6 +34,12 @@ CREATE TABLE IF NOT EXISTS visits (
     at TEXT NOT NULL
 );
 
+-- Web UI preferences as one JSON document; the UI owns its shape.
+CREATE TABLE IF NOT EXISTS settings (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    value TEXT NOT NULL
+);
+
 -- Pages split at ##/### headings, for passage retrieval.
 CREATE TABLE IF NOT EXISTS sections (
     id INTEGER PRIMARY KEY,

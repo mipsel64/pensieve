@@ -1,6 +1,6 @@
 import { lazy, StrictMode, Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { Activity as ActivityIcon, History, LayoutDashboard, LogOut, Network, Search as SearchIcon } from 'lucide-react';
+import { Activity as ActivityIcon, History, LayoutDashboard, LogOut, Network, Search as SearchIcon, Settings as SettingsIcon } from 'lucide-react';
 import '@fontsource-variable/ibm-plex-sans/wght.css';
 import '@fontsource-variable/jetbrains-mono/wght.css';
 import './style.css';
@@ -13,31 +13,35 @@ import { Timeline } from './Timeline.jsx';
 import { Activity } from './Activity.jsx';
 import { Search } from './Search.jsx';
 import { PageDrawer } from './PageDrawer.jsx';
+import { Settings } from './SettingsPage.jsx';
+import { SettingsProvider, useSettings } from './settings.jsx';
 
 // The graph library is most of the bundle; other views shouldn't wait for it.
 const GraphView = lazy(() => import('./Graph.jsx').then((m) => ({ default: m.GraphView })));
 
 const NAV = [
   ['dashboard', 'Dashboard', LayoutDashboard],
+  ['search', 'Search', SearchIcon],
   ['graph', 'Graph', Network],
   ['timeline', 'Timeline', History],
   ['activity', 'Activity', ActivityIcon],
-  ['search', 'Search', SearchIcon],
 ];
+const LABELS = { ...Object.fromEntries(NAV.map(([id, label]) => [id, label])), settings: 'Settings' };
 
 function App() {
   const [auth, setAuth] = useState({ state: 'checking' });
-  // Any auth change outdates a session check still in flight, e.g. a 401 arriving after sign-in.
+  // Any auth change outdates a check still in flight, e.g. a 401 arriving after sign-in.
   const latest = useRef(0);
   const settle = useCallback((next) => {
     latest.current++;
     setAuth(next);
   }, []);
+  // Loading the settings doubles as the session check: it's the first thing a signed-in UI needs.
   const check = useCallback(() => {
     const request = ++latest.current;
     setAuth({ state: 'checking' });
-    api('/session')
-      .then(() => request === latest.current && setAuth({ state: 'in' }))
+    api('/settings')
+      .then((settings) => request === latest.current && setAuth({ state: 'in', settings }))
       .catch((error) => request === latest.current && setAuth(error instanceof Unauthorized ? { state: 'out' } : { state: 'error', error }));
   }, []);
   useEffect(check, [check]);
@@ -51,10 +55,12 @@ function App() {
 
   if (auth.state === 'checking') return <Loading label="Connecting" />;
   if (auth.state === 'error') return <ErrorNote error={auth.error} onRetry={check} />;
-  if (auth.state === 'out') return <Login onSuccess={() => settle({ state: 'in' })} />;
+  if (auth.state === 'out') return <Login onSuccess={check} />;
   return (
     <AuthContext.Provider value={lock}>
-      <Shell onSignOut={signOut} />
+      <SettingsProvider initial={auth.settings}>
+        <Shell onSignOut={signOut} />
+      </SettingsProvider>
     </AuthContext.Provider>
   );
 }
@@ -62,32 +68,31 @@ function App() {
 function Shell({ onSignOut }) {
   const route = useHashRoute();
   const { view, params } = route;
-  const search = useRef(null);
   const main = useRef(null);
   const [signOutError, setSignOutError] = useState(null);
+  const { flush } = useSettings();
+  // Signing out ends the session, so a change still being saved has to land first.
+  const signOut = () => flush().then(onSignOut);
 
   useEffect(() => {
-    const label = NAV.find(([id]) => id === view)[1];
-    document.title = params.page ? `${params.page} · Pensieve` : `${label} · Pensieve`;
-  }, [view, params.page]);
+    document.title = params.page ? `${params.page} · Pensieve` : view === 'search' && params.q ? `${params.q} · Pensieve` : `${LABELS[view]} · Pensieve`;
+  }, [view, params.page, params.q]);
 
   useEffect(() => {
     const onKey = (e) => {
-      const typing = ['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName);
-      if (e.key === '/' && !typing && !e.metaKey && !e.ctrlKey) {
-        e.preventDefault();
-        search.current?.focus();
-      }
+      const typing = ['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName) || document.activeElement?.isContentEditable;
+      if (e.key !== '/' || typing || e.metaKey || e.ctrlKey || e.altKey) return;
+      e.preventDefault();
+      const input = document.getElementById('search-q');
+      // The search home focuses its own box when it opens.
+      if (input) {
+        input.focus();
+        input.select();
+      } else location.hash = href('search');
     };
     addEventListener('keydown', onKey);
     return () => removeEventListener('keydown', onKey);
   }, []);
-
-  function submit(event) {
-    event.preventDefault();
-    const q = new FormData(event.currentTarget).get('q').trim();
-    if (q) location.hash = href('search', { q, mode: view === 'search' ? params.mode : undefined, jev: view === 'search' ? params.jev : undefined });
-  }
 
   const content = {
     dashboard: <Dashboard />,
@@ -95,7 +100,15 @@ function Shell({ onSignOut }) {
     timeline: <Timeline params={params} />,
     activity: <Activity />,
     search: <Search params={params} />,
+    settings: <Settings onSignOut={signOut} />,
   }[view];
+
+  const link = (id, label, Icon) => (
+    <a href={href(id)} aria-current={view === id ? 'page' : undefined}>
+      <Icon size={18} aria-hidden="true" />
+      <span>{label}</span>
+    </a>
+  );
 
   return (
     <RouteContext.Provider value={route}>
@@ -110,53 +123,32 @@ function Shell({ onSignOut }) {
           </a>
           <ul>
             {NAV.map(([id, label, Icon]) => (
-              <li key={id}>
-                <a href={href(id)} aria-current={view === id ? 'page' : undefined}>
-                  <Icon size={18} aria-hidden="true" />
-                  <span>{label}</span>
-                </a>
-              </li>
+              <li key={id}>{link(id, label, Icon)}</li>
             ))}
+            <li className="nav-settings">{link('settings', 'Settings', SettingsIcon)}</li>
           </ul>
-        </nav>
-        <div className="main">
-          <header className="topbar">
-            <form className="search-form" role="search" onSubmit={submit}>
-              <SearchIcon size={16} aria-hidden="true" />
-              <input
-                ref={search}
-                key={view === 'search' ? params.q : ''}
-                name="q"
-                type="search"
-                placeholder="Search memory"
-                aria-label="Search memory"
-                defaultValue={view === 'search' ? (params.q ?? '') : ''}
-                autoComplete="off"
-              />
-              <kbd aria-hidden="true">/</kbd>
-            </form>
+          <div className="sidebar-foot">
             {signOutError && (
-              <span className="signout-error" role="alert">
+              <p className="field-error" role="alert">
                 Couldn't sign out: {signOutError.message}
-              </span>
+              </p>
             )}
             <button
               type="button"
-              className="ghost signout"
+              className="signout"
               onClick={() => {
                 setSignOutError(null);
-                onSignOut().catch(setSignOutError);
+                signOut().catch(setSignOutError);
               }}
-              aria-label="Sign out"
             >
-              <LogOut size={16} aria-hidden="true" />
+              <LogOut size={18} aria-hidden="true" />
               <span>Sign out</span>
             </button>
-          </header>
-          <main ref={main} tabIndex={-1} className={`content content-${view}`}>
-            <Suspense fallback={<Loading />}>{content}</Suspense>
-          </main>
-        </div>
+          </div>
+        </nav>
+        <main ref={main} tabIndex={-1} className={`content content-${view}`}>
+          <Suspense fallback={<Loading />}>{content}</Suspense>
+        </main>
         {params.page && <PageDrawer key={params.page} title={params.page} closeHref={href(view, { ...params, page: undefined })} />}
       </div>
     </RouteContext.Provider>
