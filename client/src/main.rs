@@ -75,8 +75,9 @@ fn main() {
             ),
             Err(e) => failure(&message, format!("pensieve server unreachable: {e}")),
         };
-        // Notifications get no reply, even when forwarding them failed.
-        if message.get("id").is_none() {
+        // Notifications and responses get no reply, even when forwarding them failed.
+        let answered = message.get("result").or(message.get("error")).is_some();
+        if answered || (message.get("id").is_none() && message["method"].is_string()) {
             continue;
         }
         if writeln!(stdout, "{reply}")

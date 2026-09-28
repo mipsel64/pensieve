@@ -64,7 +64,14 @@ pub trait Storage: Send + Sync {
             return Err(Error::invalid("cannot edit: old_text is empty"));
         }
         let page = self.page(title).await?;
-        match page.content.matches(old).count() {
+        // Counted with overlaps: in "aaa", "aa" is ambiguous.
+        let found = page
+            .content
+            .char_indices()
+            .filter(|(i, _)| page.content[*i..].starts_with(old))
+            .take(2)
+            .count();
+        match found {
             0 => Err(Error::invalid("cannot edit: old_text not found in page")),
             1 => {
                 self.put(

@@ -8,7 +8,9 @@ mod server;
 mod storage;
 
 use std::{
+    collections::HashMap,
     fs,
+    os::unix::fs::{DirBuilderExt, OpenOptionsExt},
     path::{Path, PathBuf},
     process::ExitCode,
     sync::Arc,
@@ -61,9 +63,7 @@ async fn run() -> CliResult {
     let cli = Cli::parse();
     let config = Config::load(cli.config.as_deref())?;
     let db = &config.storage.path;
-    if let Some(parent) = db.parent() {
-        fs::create_dir_all(parent)?;
-    }
+    create_private(db)?;
     let storage =
         SqliteStorage::open(db).map_err(|e| format!("cannot open {}: {e}", db.display()))?;
     let storage: Arc<dyn Storage> = Arc::new(storage);
@@ -116,8 +116,29 @@ async fn run() -> CliResult {
     Ok(())
 }
 
+/// Creates the database's directory (0700) and file (0600) if missing, so page content isn't
+/// readable by other local users; SQLite gives its WAL files the database file's mode.
+fn create_private(db: &Path) -> std::io::Result<()> {
+    if let Some(parent) = db.parent().filter(|p| !p.as_os_str().is_empty()) {
+        fs::DirBuilder::new()
+            .recursive(true)
+            .mode(0o700)
+            .create(parent)?;
+    }
+    match fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .mode(0o600)
+        .open(db)
+    {
+        Err(e) if e.kind() != std::io::ErrorKind::AlreadyExists => Err(e),
+        _ => Ok(()),
+    }
+}
+
 async fn import(storage: &dyn Storage, dir: &Path) -> CliResult {
-    let (mut imported, mut unchanged) = (0, 0);
+    let (mut imported, mut unchanged, mut failed) = (0, 0, 0);
+    let mut seen = HashMap::new();
     let summary = format!(
         "Import from {}",
         dir.file_name().unwrap_or(dir.as_os_str()).to_string_lossy()
@@ -140,18 +161,34 @@ async fn import(storage: &dyn Storage, dir: &Path) -> CliResult {
         {
             continue;
         }
-        let Ok(content) = fs::read_to_string(&path) else {
-            eprintln!("skip {}: not UTF-8", path.display());
+        // Titles are case-insensitive, so Foo.md and foo.md would overwrite each other.
+        if let Some(first) = seen.insert(title.to_ascii_lowercase(), path.clone()) {
+            eprintln!("skip {}: same title as {}", path.display(), first.display());
+            failed += 1;
             continue;
+        }
+        let content = match fs::read_to_string(&path) {
+            Ok(content) => content,
+            Err(e) => {
+                eprintln!("skip {}: {e}", path.display());
+                failed += 1;
+                continue;
+            }
         };
         let before = storage.page(title).await.map(|p| p.rev).ok();
         match storage.put(title, &content, None, change).await {
             Ok(rev) if Some(rev) == before => unchanged += 1,
             Ok(_) => imported += 1,
-            Err(e) => eprintln!("skip {}: {e}", path.display()),
+            Err(e) => {
+                eprintln!("skip {}: {e}", path.display());
+                failed += 1;
+            }
         }
     }
-    eprintln!("imported {imported}, unchanged {unchanged}");
+    eprintln!("imported {imported}, unchanged {unchanged}, failed {failed}");
+    if failed > 0 {
+        return Err(format!("{failed} files were not imported").into());
+    }
     Ok(())
 }
 

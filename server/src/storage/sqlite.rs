@@ -91,7 +91,8 @@ END;
 "#;
 
 /// Applied in order on top of `SCHEMA`; `PRAGMA user_version` counts how many ran.
-/// Every migration is followed by a full reindex of derived data.
+/// Every migration is followed by a full reindex of derived data, so an empty entry is how to
+/// reindex existing databases after changing how pages are parsed.
 const MIGRATIONS: &[&str] = &["ALTER TABLE pages ADD COLUMN type TEXT;
      ALTER TABLE pages ADD COLUMN confidence TEXT;
      ALTER TABLE revisions ADD COLUMN summary TEXT;"];
@@ -206,10 +207,21 @@ fn migrate(conn: &mut Connection) -> Result<()> {
             "UPDATE pages SET type = ?2, confidence = ?3 WHERE id = ?1",
             params![id, kind, confidence],
         )?;
+        replace_links(&tx, id, &markdown::wikilinks(&content))?;
         replace_sections(&tx, id, &title, &markdown::sections(&content))?;
     }
     tx.pragma_update(None, "user_version", MIGRATIONS.len() as i64)?;
     tx.commit()?;
+    Ok(())
+}
+
+fn replace_links(conn: &Connection, page: i64, links: &[String]) -> Result<()> {
+    conn.execute("DELETE FROM links WHERE src = ?1", [page])?;
+    let mut insert =
+        conn.prepare_cached("INSERT OR IGNORE INTO links (src, dst) VALUES (?1, ?2)")?;
+    for link in links {
+        insert.execute(params![page, link])?;
+    }
     Ok(())
 }
 
@@ -303,14 +315,7 @@ fn save(conn: &mut Connection, draft: &Draft) -> Result<i64> {
          SELECT title, rev, content, updated_at, updated_by, ?2 FROM pages WHERE id = ?1",
         params![id, draft.summary],
     )?;
-    tx.execute("DELETE FROM links WHERE src = ?1", [id])?;
-    {
-        let mut insert =
-            tx.prepare_cached("INSERT OR IGNORE INTO links (src, dst) VALUES (?1, ?2)")?;
-        for link in &draft.links {
-            insert.execute(params![id, link])?;
-        }
-    }
+    replace_links(&tx, id, &draft.links)?;
     let title: String =
         tx.query_row("SELECT title FROM pages WHERE id = ?1", [id], |r| r.get(0))?;
     replace_sections(&tx, id, &title, &draft.sections)?;
@@ -336,7 +341,7 @@ fn search(conn: &Connection, query: &str, limit: usize) -> Result<Vec<Hit>> {
             .map_err(Into::into);
     };
     conn.prepare_cached(
-        "SELECT p.title, p.rev, p.updated_at, snippet(pages_fts, 1, '«', '»', '…', 24),
+        "SELECT p.title, p.rev, p.updated_at, snippet(pages_fts, -1, '«', '»', '…', 24),
                 -bm25(pages_fts, 10.0, 1.0), substr(p.content, 1, ?3)
          FROM pages_fts JOIN pages p ON p.id = pages_fts.rowid
          WHERE pages_fts MATCH ?1 ORDER BY 5 DESC LIMIT ?2",
@@ -419,7 +424,7 @@ fn graph(conn: &Connection) -> Result<Graph> {
         .map(|(mut edge, is_missing)| {
             if is_missing {
                 let id = missing
-                    .entry(edge.target.to_lowercase())
+                    .entry(edge.target.to_ascii_lowercase())
                     .or_insert_with(|| edge.target.clone());
                 edge.target.clone_from(id);
             }

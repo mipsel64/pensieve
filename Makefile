@@ -118,4 +118,4 @@ else ifeq ($(OS),Linux)
 		systemctl --user daemon-reload; \
 	fi
 endif
-	cd "$(BIN_DIR)" && rm -f $(BINS)
+	rm -f $(addprefix "$(BIN_DIR)"/,$(BINS))

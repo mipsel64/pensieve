@@ -56,8 +56,18 @@ File this into Pensieve: {source}
 /// The JSON-RPC reply to `message`, or `None` for notifications and responses.
 pub async fn handle(app: &App, agent: &str, message: &Value) -> Option<Value> {
     let answered = message.get("result").or(message.get("error")).is_some();
-    let id = message.get("id").filter(|_| !answered)?;
-    let result = match message["method"].as_str() {
+    let method = message["method"].as_str();
+    let Some(id) = message.get("id") else {
+        // Notifications and responses need no reply; anything else is malformed and gets one.
+        let malformed = method.is_none() && !answered;
+        return malformed.then(|| {
+            json!({ "jsonrpc": "2.0", "id": null, "error": { "code": -32600, "message": "invalid request" } })
+        });
+    };
+    if answered {
+        return None;
+    }
+    let result = match method {
         Some(method) => dispatch(app, agent, method, &message["params"]).await,
         None => Err((-32600, "invalid request: missing method".to_owned())),
     };
@@ -348,7 +358,7 @@ async fn write(app: &App, agent: &str, args: Value) -> Result<String, String> {
             "No change: {title} already has this content at rev {rev}."
         ));
     }
-    feedback(app, &title, &summary).await
+    Ok(feedback(app, title.trim(), rev, &summary).await)
 }
 
 async fn edit(app: &App, agent: &str, args: Value) -> Result<String, String> {
@@ -371,8 +381,8 @@ async fn edit(app: &App, agent: &str, args: Value) -> Result<String, String> {
         }
         _ => return Err("pass either old_text and new_text, or section and append".into()),
     };
-    result.map_err(|e| format!("{}: {e}", args.title))?;
-    feedback(app, &args.title, &args.summary).await
+    let rev = result.map_err(|e| format!("{}: {e}", args.title))?;
+    Ok(feedback(app, args.title.trim(), rev, &args.summary).await)
 }
 
 fn change<'a>(agent: &'a str, summary: &'a str) -> Result<Change<'a>, String> {
@@ -385,8 +395,19 @@ fn change<'a>(agent: &'a str, summary: &'a str) -> Result<Change<'a>, String> {
     })
 }
 
-/// What an agent should fix after a write: missing links and type, and unlinked mentions both ways.
-async fn feedback(app: &App, title: &str, summary: &str) -> Result<String, String> {
+/// The write's confirmation plus what to fix. The write is already committed, so failing to
+/// compute the checks must not turn it into an error an agent would retry.
+async fn feedback(app: &App, title: &str, rev: i64, summary: &str) -> String {
+    checks(app, title, summary).await.unwrap_or_else(|e| {
+        format!(
+            "Saved {title} rev {rev}: {}\nCould not check links: {e}",
+            summary.trim()
+        )
+    })
+}
+
+/// Missing links and type, and unlinked mentions both ways.
+async fn checks(app: &App, title: &str, summary: &str) -> Result<String, String> {
     let page = app.storage.page(title).await.map_err(|e| e.to_string())?;
     let mut out = format!(
         "Saved {} rev {}: {}\n",
@@ -417,8 +438,16 @@ async fn feedback(app: &App, title: &str, summary: &str) -> Result<String, Strin
 
     // ponytail: scans every page per write; index titles if the wiki grows past a few thousand pages.
     let pages = app.storage.pages().await.map_err(|e| e.to_string())?;
-    let linked: HashSet<_> = page.links.iter().map(|l| l.title.to_lowercase()).collect();
-    let linking: HashSet<_> = page.backlinks.iter().map(|t| t.to_lowercase()).collect();
+    let linked: HashSet<_> = page
+        .links
+        .iter()
+        .map(|l| l.title.to_ascii_lowercase())
+        .collect();
+    let linking: HashSet<_> = page
+        .backlinks
+        .iter()
+        .map(|t| t.to_ascii_lowercase())
+        .collect();
     // Only typed pages count, which keeps hubs like "Sources" from matching the everyday word.
     let typed = |content: &str| {
         markdown::field(content, "type").is_some_and(|k| KINDS.contains(&k.as_str()))
@@ -432,7 +461,7 @@ async fn feedback(app: &App, title: &str, summary: &str) -> Result<String, Strin
     let outgoing: Vec<_> = others()
         .filter(|(t, _)| {
             t.chars().count() >= 4
-                && !linked.contains(&t.to_lowercase())
+                && !linked.contains(&t.to_ascii_lowercase())
                 && markdown::mentions(body, t)
         })
         .map(|(t, _)| t.as_str())
@@ -440,7 +469,7 @@ async fn feedback(app: &App, title: &str, summary: &str) -> Result<String, Strin
     let incoming: Vec<_> = if page.kind.is_some() {
         others()
             .filter(|(t, c)| {
-                !linking.contains(&t.to_lowercase())
+                !linking.contains(&t.to_ascii_lowercase())
                     && markdown::mentions(markdown::body(c), &page.title)
             })
             .map(|(t, _)| t.as_str())
@@ -729,6 +758,33 @@ mod tests {
             .await
             .is_none()
         );
+        assert!(
+            handle(
+                &app,
+                "t",
+                &json!({ "jsonrpc": "2.0", "id": 9, "result": {} })
+            )
+            .await
+            .is_none()
+        );
+        for malformed in [
+            json!({}),
+            json!([1]),
+            json!({ "jsonrpc": "2.0", "method": 5 }),
+        ] {
+            let reply = handle(&app, "t", &malformed).await.unwrap();
+            assert_eq!(
+                (reply["id"].clone(), reply["error"]["code"].clone()),
+                (Value::Null, json!(-32600))
+            );
+        }
+        let (text, error) = tool(
+            &app,
+            "write",
+            json!({ "title": " Spaced ", "content": page("topic", "x"), "summary": "Trim" }),
+        )
+        .await;
+        assert!(!error && text.starts_with("Saved Spaced rev 1"), "{text}");
         let bad = handle(&app, "t", &json!({ "jsonrpc": "2.0", "id": 2 }))
             .await
             .unwrap();

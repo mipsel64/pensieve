@@ -11,8 +11,9 @@ const CANDIDATES: usize = 40;
 /// Passages per page in one recall, so one long page can't crowd out the others.
 const PER_PAGE: usize = 3;
 const MAX_LEADS: usize = 8;
-/// Characters per candidate sent to the reranker.
-const EXCERPT_CHARS: usize = 3000;
+/// Bytes per section sent to the reranker; covers all but the longest sections, and the reranker
+/// splits batches to fit its request limit.
+const EXCERPT_BYTES: usize = 6000;
 pub const DEFAULT_BUDGET: usize = 2000;
 pub const MAX_BUDGET: usize = 8000;
 /// Question words too common to signal relevance; with any-term matching they would match every page.
@@ -113,7 +114,7 @@ pub async fn recall(
             .iter()
             .map(|p| Candidate {
                 label: label(p),
-                text: truncate(&p.text, EXCERPT_CHARS).to_owned(),
+                text: truncate(&p.text, EXCERPT_BYTES).to_owned(),
             })
             .collect();
         match reranker.rerank(question, &candidates).await {
@@ -141,13 +142,12 @@ pub async fn recall(
         }
         if tokens + cost > budget {
             // The best passage alone is over budget: return its start rather than nothing.
-            let keep = budget.saturating_sub(cost - passage.text.len() / 4) * 4;
-            passage.text = format!(
-                "{}… [truncated; read the section for the rest]",
-                truncate(&passage.text, keep)
-            );
+            const MORE: &str = "… [truncated; read the section for the rest]";
+            let overhead = cost - passage.text.len() / 4 + MORE.len() / 4 + 1;
+            let keep = budget.saturating_sub(overhead) * 4;
+            passage.text = format!("{}{MORE}", truncate(&passage.text, keep));
         }
-        tokens += cost.min(budget);
+        tokens += self::cost(&passage);
         *taken += 1;
         passages.push(passage);
     }

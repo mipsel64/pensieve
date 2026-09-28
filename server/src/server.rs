@@ -82,7 +82,9 @@ async fn auth(State(app): State<Arc<App>>, request: Request, next: Next) -> Resp
         .headers()
         .get(header::AUTHORIZATION)
         .and_then(|v| v.to_str().ok())
-        .and_then(|v| v.strip_prefix("Bearer "))
+        .and_then(|v| v.split_once(' '))
+        .filter(|(scheme, _)| scheme.eq_ignore_ascii_case("bearer"))
+        .map(|(_, token)| token.trim())
         .is_some_and(|token| bool::from(token.as_bytes().ct_eq(app.token.as_bytes())));
     if !authorized {
         return StatusCode::UNAUTHORIZED.into_response();
@@ -156,7 +158,7 @@ async fn write(
             change,
         )
         .await?;
-    Ok(Json(json!({ "title": title, "rev": rev })))
+    Ok(Json(json!({ "title": title.trim(), "rev": rev })))
 }
 
 #[derive(Deserialize)]
@@ -180,7 +182,7 @@ async fn edit(
         .storage
         .edit(&title, &body.old_text, &body.new_text, change)
         .await?;
-    Ok(Json(json!({ "title": title, "rev": rev })))
+    Ok(Json(json!({ "title": title.trim(), "rev": rev })))
 }
 
 #[derive(Deserialize)]

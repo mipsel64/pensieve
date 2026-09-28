@@ -10,6 +10,10 @@ use crate::error::{Error, Result};
 
 /// Candidates per request; keeps each request well under Jev's ~38 KB body budget.
 const BATCH: usize = 8;
+/// Serialized request budget per batch, under Jev's ~38 KB limit with room for headers.
+const MAX_REQUEST_BYTES: usize = 32_000;
+/// Longest query sent; questions are short, and the query is repeated in every batch.
+const MAX_QUERY_BYTES: usize = 2_000;
 /// Jev answers are probabilities; keep pages it judges more likely relevant than not.
 const THRESHOLD: f64 = 0.5;
 
@@ -94,21 +98,36 @@ impl Jev {
 #[async_trait]
 impl Reranker for Jev {
     async fn rerank(&self, query: &str, candidates: &[Candidate]) -> Result<Vec<(usize, f64)>> {
+        let mut end = query.len().min(MAX_QUERY_BYTES);
+        while !query.is_char_boundary(end) {
+            end -= 1;
+        }
+        let query = &query[..end];
         let mut tasks = JoinSet::new();
-        for (batch, chunk) in candidates.chunks(BATCH).enumerate() {
-            let request = self
-                .http
-                .post(&self.url)
-                .bearer_auth(&self.key)
-                .json(&self.request(query, chunk));
-            let len = chunk.len();
-            tasks.spawn(async move { (batch, probabilities(request, len).await) });
+        let mut start = 0;
+        while start < candidates.len() {
+            // Grow the batch while it fits; a single oversized candidate still goes alone.
+            let mut len = 1;
+            while start + len < candidates.len()
+                && len < BATCH
+                && self
+                    .request(query, &candidates[start..=start + len])
+                    .to_string()
+                    .len()
+                    <= MAX_REQUEST_BYTES
+            {
+                len += 1;
+            }
+            let body = self.request(query, &candidates[start..start + len]);
+            let request = self.http.post(&self.url).bearer_auth(&self.key).json(&body);
+            tasks.spawn(async move { (start, probabilities(request, len).await) });
+            start += len;
         }
         let mut scores = vec![0.0; candidates.len()];
         while let Some(joined) = tasks.join_next().await {
-            let (batch, result) = joined.map_err(|e| Error::rerank(e.to_string()))?;
+            let (start, result) = joined.map_err(|e| Error::rerank(e.to_string()))?;
             for (i, p) in result?.into_iter().enumerate() {
-                scores[batch * BATCH + i] = p;
+                scores[start + i] = p;
             }
         }
         let mut ranked: Vec<_> = scores
@@ -146,13 +165,18 @@ async fn probabilities(request: reqwest::RequestBuilder, len: usize) -> Result<V
 
 #[cfg(test)]
 mod tests {
-    use axum::{Json, Router, routing::post};
+    use axum::{Json, Router, http::StatusCode, routing::post};
 
     use super::*;
 
     #[tokio::test]
-    async fn rerank_filters_and_orders_across_batches() {
-        let judge = |Json(body): Json<Value>| async move {
+    async fn rerank_filters_orders_and_splits_batches_by_size() {
+        // Like Jev, rejects oversized requests; otherwise scores passages by title.
+        let judge = |body: String| async move {
+            if body.len() > 38_000 {
+                return Err(StatusCode::PAYLOAD_TOO_LARGE);
+            }
+            let body: Value = serde_json::from_str(&body).unwrap();
             let answers: Map<_, _> = body["state"]["passages"]
                 .as_array()
                 .unwrap()
@@ -169,28 +193,35 @@ mod tests {
                     )
                 })
                 .collect();
-            Json(json!({ "answers": answers }))
+            Ok(Json(json!({ "answers": answers })))
         };
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let base = format!("http://{}", listener.local_addr().unwrap());
         tokio::spawn(
             axum::serve(listener, Router::new().route("/systemone", post(judge))).into_future(),
         );
+        let jev = Jev::new(&base, "jev", "key".into());
+        let candidate = |i: usize, best: usize, good: usize, text: &str| Candidate {
+            label: match i {
+                _ if i == best => "best".into(),
+                _ if i == good => "good".into(),
+                _ => format!("noise{i}"),
+            },
+            text: text.into(),
+        };
 
-        let candidates: Vec<_> = (0..12)
-            .map(|i| Candidate {
-                label: match i {
-                    3 => "good".into(),
-                    10 => "best".into(),
-                    _ => format!("noise{i}"),
-                },
-                text: "text".into(),
-            })
+        let small: Vec<_> = (0..12).map(|i| candidate(i, 10, 3, "text")).collect();
+        assert_eq!(
+            jev.rerank("query", &small).await.unwrap(),
+            [(10, 0.9), (3, 0.7)]
+        );
+
+        let large: Vec<_> = (0..6)
+            .map(|i| candidate(i, 4, 99, &"x".repeat(10_000)))
             .collect();
-        let ranked = Jev::new(&base, "jev", "key".into())
-            .rerank("query", &candidates)
-            .await
-            .unwrap();
-        assert_eq!(ranked, [(10, 0.9), (3, 0.7)]);
+        assert_eq!(
+            jev.rerank(&"q".repeat(5_000), &large).await.unwrap(),
+            [(4, 0.9)]
+        );
     }
 }
