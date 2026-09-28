@@ -8,7 +8,7 @@
     <string>__USER__</string>
     <key>ProgramArguments</key>
     <array>
-        <string>__HOME__/.local/bin/pensieve-server</string>
+        <string>__HOME__/.local/bin/pensieve</string>
         <string>--config</string>
         <string>__HOME__/.config/pensieve/config.toml</string>
         <string>serve</string>

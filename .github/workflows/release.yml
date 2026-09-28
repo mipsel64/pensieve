@@ -87,15 +87,15 @@ jobs:
           BUILD_DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ)
           export BUILD_DATE
           cargo build --locked --release
-          test "$(target/release/pensieve-server --version)" = "pensieve-server ${GITHUB_REF_NAME#v}+${GIT_SHA:0:7} $BUILD_DATE"
+          test "$(target/release/pensieve --version)" = "pensieve ${GITHUB_REF_NAME#v}+${GIT_SHA:0:7} $BUILD_DATE"
       - name: Package
         run: |
           archive="pensieve-$GITHUB_REF_NAME-$PLATFORM.tar.gz"
           stage="$RUNNER_TEMP/pensieve-$PLATFORM"
           mkdir -p "$stage"
-          cp target/release/pensieve-server LICENSE README.md pensieve.example.toml "$stage/"
+          cp target/release/pensieve LICENSE README.md pensieve.example.toml "$stage/"
           cp -R examples "$stage/"
-          COPYFILE_DISABLE=1 tar -C "$stage" -czf "$archive" pensieve-server LICENSE README.md pensieve.example.toml examples
+          COPYFILE_DISABLE=1 tar -C "$stage" -czf "$archive" pensieve LICENSE README.md pensieve.example.toml examples
           shasum -a 256 "$archive" > "$archive.sha256"
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:

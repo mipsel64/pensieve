@@ -4,7 +4,7 @@ SHELL := /bin/sh
 OS := $(shell uname -s)
 CARGO_TARGET_DIR ?= target
 BIN_DIR := $(HOME)/.local/bin
-BINS := pensieve-server
+BINS := pensieve
 CONFIG := $(HOME)/.config/pensieve/config.toml
 PLIST := $(HOME)/.config/pensieve/pensieve.plist
 LAUNCHD_PLIST := /Library/LaunchDaemons/io.github.mipsel64.pensieve.plist
@@ -54,7 +54,7 @@ ifeq ($(OS),Darwin)
 	test -e "$(PLIST)" || cp examples/pensieve.plist "$(PLIST)"; \
 	plutil -replace UserName -string "$$(id -un)" "$(PLIST)"; \
 	plutil -remove ProgramArguments.0 "$(PLIST)"; \
-	plutil -insert ProgramArguments.0 -string "$(BIN_DIR)/pensieve-server" "$(PLIST)"; \
+	plutil -insert ProgramArguments.0 -string "$(BIN_DIR)/pensieve" "$(PLIST)"; \
 	plutil -remove ProgramArguments.2 "$(PLIST)"; \
 	plutil -insert ProgramArguments.2 -string "$(CONFIG)" "$(PLIST)"; \
 	plutil -replace EnvironmentVariables.HOME -string "$(HOME)" "$(PLIST)"; \
@@ -118,4 +118,4 @@ else ifeq ($(OS),Linux)
 		systemctl --user daemon-reload; \
 	fi
 endif
-	rm -f $(addprefix "$(BIN_DIR)"/,$(BINS) pensieve)
+	rm -f $(addprefix "$(BIN_DIR)"/,$(BINS) pensieve-server)

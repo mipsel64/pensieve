@@ -33,7 +33,7 @@ jobs:
           cache: npm
           cache-dependency-path: server/web/package-lock.json
       - run: npm ci --prefix server/web
-      # Builds server/web/dist, which pensieve-server embeds at compile time.
+      # Builds server/web/dist, which pensieve embeds at compile time.
       - run: npm --prefix server/web run build
       - name: Install Rust
         run: rustup toolchain install "$RUSTUP_TOOLCHAIN" --profile minimal --component rustfmt --component clippy

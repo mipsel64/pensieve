@@ -3,7 +3,7 @@ Description=Pensieve memory server
 
 [Service]
 Type=exec
-ExecStart=%h/.local/bin/pensieve-server --config %h/.config/pensieve/config.toml serve
+ExecStart=%h/.local/bin/pensieve --config %h/.config/pensieve/config.toml serve
 Environment=HOME=%h
 Restart=on-failure
 RestartSec=5s

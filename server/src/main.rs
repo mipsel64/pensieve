@@ -54,7 +54,7 @@ async fn main() -> ExitCode {
     match run().await {
         Ok(()) => ExitCode::SUCCESS,
         Err(e) => {
-            eprintln!("pensieve-server: {e}");
+            eprintln!("pensieve: {e}");
             ExitCode::FAILURE
         }
     }
@@ -138,7 +138,7 @@ fn create_private(db: &Path) -> std::io::Result<()> {
             let mode = fs::metadata(db)?.permissions().mode();
             if mode & 0o077 != 0 {
                 eprintln!(
-                    "pensieve-server: warning: {} is readable by other users (mode {:o}); run chmod 600 on it",
+                    "pensieve: warning: {} is readable by other users (mode {:o}); run chmod 600 on it",
                     db.display(),
                     mode & 0o777
                 );

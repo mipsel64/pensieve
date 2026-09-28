@@ -2,21 +2,21 @@
 
 Persistent memory for agents, shared across devices. It follows the [LLM Wiki](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f) pattern: agents keep a Markdown wiki connected by `[[links]]`. Pages are stored in one SQLite database on a server instead of a folder that has to be synced between machines.
 
-`pensieve-server` stores pages in SQLite and keeps revision history, the link graph and a section index. It serves MCP at `/mcp`, the HTTP API and a web UI. Agents connect to `/mcp` by URL, so tools and agent guidance change with a server upgrade, with nothing to install on each device.
+`pensieve` stores pages in SQLite and keeps revision history, the link graph and a section index. It serves MCP at `/mcp`, the HTTP API and a web UI. Agents connect to `/mcp` by URL, so tools and agent guidance change with a server upgrade, with nothing to install on each device.
 
 Pages are indexed per `##`/`###` section with SQLite FTS5 BM25. With a Jev key, `recall` sends the top 40 matching sections to [Jev](https://vercel.com/ai-gateway/models/jev), which scores how likely each is to help, and drops the unlikely ones, as in [jevgrep](https://github.com/dzhng/jevgrep). If Jev fails, results fall back to BM25 order.
 
 ## Server
 
-[Releases](https://github.com/mipsel64/pensieve/releases) have `pensieve-server` for Linux (glibc 2.35 or newer) and macOS, on amd64 and arm64, with `pensieve.example.toml` and the service files from `examples/`. To run one without a checkout, copy the example config to `~/.config/pensieve/config.toml` (mode 0600), set `server.token` (`openssl rand -hex 32`), and run `pensieve-server serve`.
+[Releases](https://github.com/mipsel64/pensieve/releases) have `pensieve` for Linux (glibc 2.35 or newer) and macOS, on amd64 and arm64, with `pensieve.example.toml` and the service files from `examples/`. To run one without a checkout, copy the example config to `~/.config/pensieve/config.toml` (mode 0600), set `server.token` (`openssl rand -hex 32`), and run `pensieve serve`.
 
-To build from source instead, you need Rust and Node 22.18 or newer. The web UI (React and Vite, in `server/web`) is compiled into `pensieve-server`, so run `make` once before `cargo build` or `cargo test`.
+To build from source instead, you need Rust and Node 22.18 or newer. The web UI (React and Vite, in `server/web`) is compiled into `pensieve`, so run `make` once before `cargo build` or `cargo test`.
 
 ```sh
-make setup      # installs pensieve-server to ~/.local/bin and starts the service
+make setup      # installs pensieve to ~/.local/bin and starts the service
 ```
 
-On first run, `make setup` creates `~/.config/pensieve/config.toml` (mode 0600) from [`pensieve.example.toml`](pensieve.example.toml), with a random server token. Every client needs this token. The service is a launchd daemon on macOS and a systemd user service on Linux. Both start `pensieve-server --config ~/.config/pensieve/config.toml serve`, so run `make restart` after editing the file.
+On first run, `make setup` creates `~/.config/pensieve/config.toml` (mode 0600) from [`pensieve.example.toml`](pensieve.example.toml), with a random server token. Every client needs this token. The service is a launchd daemon on macOS and a systemd user service on Linux. Both start `pensieve --config ~/.config/pensieve/config.toml serve`, so run `make restart` after editing the file.
 
 | Setting | Env override | Default | |
 |---|---|---|---|
@@ -26,15 +26,15 @@ On first run, `make setup` creates `~/.config/pensieve/config.toml` (mode 0600) 
 | `jev.key` | `PENSIEVE_JEV_KEY` | unset (BM25 only) | Key for the chosen provider |
 | `jev.provider` | `PENSIEVE_JEV_PROVIDER` | `vercel` | `vercel`, `typesafe`, `openrouter` or `opencode` |
 
-`-c <file>` (or `PENSIEVE_CONFIG`) selects another config file. Without it, `pensieve-server` reads `~/.config/pensieve/config.toml` if it exists and otherwise uses the defaults. Environment variables override the file; empty ones are ignored. Unknown keys are rejected, so typos fail at startup.
+`-c <file>` (or `PENSIEVE_CONFIG`) selects another config file. Without it, `pensieve` reads `~/.config/pensieve/config.toml` if it exists and otherwise uses the defaults. Environment variables override the file; empty ones are ignored. Unknown keys are rejected, so typos fail at startup.
 
 | Command | |
 |---|---|
-| `make` / `make install` | Build, or build and install `pensieve-server` |
+| `make` / `make install` | Build, or build and install `pensieve` |
 | `make restart [REBUILD=1]` / `make status` | Restart the service (rebuild first with `REBUILD=1`) or show its state |
 | `make clean` | Remove the service and binaries; keeps the config and database |
 
-Import an existing wiki once with `pensieve-server import ~/vaults/wiki`; it skips `index.md` and `log.md`. `pensieve-server export <dir>` writes every page back out as `<title>.md`. To reach the server from other devices, keep it on loopback and run `tailscale serve --bg 7878`. On Linux, run `loginctl enable-linger` so the service keeps running after you log out.
+Import an existing wiki once with `pensieve import ~/vaults/wiki`; it skips `index.md` and `log.md`. `pensieve export <dir>` writes every page back out as `<title>.md`. To reach the server from other devices, keep it on loopback and run `tailscale serve --bg 7878`. On Linux, run `loginctl enable-linger` so the service keeps running after you log out.
 
 New backends implement `storage::Storage` and must pass `storage::conformance::check`. New rerankers implement `rerank::Reranker`.
 
@@ -46,7 +46,7 @@ Signing in sets a signed session cookie that lasts 30 days and can only read: wr
 
 ## Docker
 
-The image contains only `pensieve-server` and runs as a non-root user. The database is stored in the `/var/lib/pensieve` volume. Releases publish `ghcr.io/mipsel64/pensieve:vX.Y.Z` and `:latest`, and `main` publishes `:nightly`. The commands below build the image locally as `pensieve`; to use a published image, pull it and use its name instead.
+The image contains only `pensieve` and runs as a non-root user. The database is stored in the `/var/lib/pensieve` volume. Releases publish `ghcr.io/mipsel64/pensieve:vX.Y.Z` and `:latest`, and `main` publishes `:nightly`. The commands below build the image locally as `pensieve`; to use a published image, pull it and use its name instead.
 
 ```sh
 docker build -t pensieve .
