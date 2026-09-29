@@ -1,10 +1,27 @@
 # Pensieve
 
+![Claude Code, Codex and Pi connect over MCP to a Pensieve server, which keeps pages, links, a section index and the journal in one SQLite file; a read-only web UI shows search, the graph, the timeline and the journal.](docs/pensieve.svg)
+
 Persistent memory for agents, shared across devices. It follows the [LLM Wiki](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f) pattern: agents keep a Markdown wiki connected by `[[links]]`. Pages are stored in one SQLite database on a server instead of a folder that has to be synced between machines.
 
 `pensieve` stores pages in SQLite and keeps revision history, the link graph and a section index. It serves MCP at `/mcp`, the HTTP API and a web UI. Agents connect to `/mcp` by URL, so tools and agent guidance change with a server upgrade, with nothing to install on each device.
 
 Pages are indexed per `##`/`###` section with SQLite FTS5 BM25. With a Jev key, `recall` sends the top 40 matching sections to [Jev](https://vercel.com/ai-gateway/models/jev), which scores how likely each is to help, and drops the unlikely ones, as in [jevgrep](https://github.com/dzhng/jevgrep). If Jev fails, results fall back to BM25 order.
+
+## Tokens compared with a file wiki
+
+In a file-based LLM Wiki, an agent reads the wiki's schema file and `index.md`, the catalog of every page, then opens the pages it needs. Pensieve's MCP instructions carry a generated map of memory instead, and `recall` returns only the matching sections, within a token budget.
+
+[`scripts/token-bench.py`](scripts/token-bench.py) measured both on the maintainer's own memory, about 300 pages, as a file wiki and after importing it into Pensieve. Its 20 everyday questions were written from the wiki's index, each with the page that answers it, and the file wiki gets the best case: it opens exactly that page and nothing else. Tokens are counted with `o200k_base`, and `recall` used its default 2,000-token budget with Jev reranking. Jev's ranking moves Pensieve's figures by a few percent between runs, so each is the middle of three.
+
+| | Pensieve | File wiki, best case |
+|---|---:|---:|
+| Session start: MCP instructions and tool definitions, or `AGENTS.md` and `index.md` | 1,415 | 12,436 |
+| Each question, median: `recall`, or the page that answers it | 1,926 | 2,221 |
+| First question of a session | 3,341 | 14,657 (4.4×) |
+| One session asking all 20 | 36,134 | 61,823 (1.7×) |
+
+Most of the difference is `index.md`: the file wiki reads it in every session, and it gains a line with every page, while Pensieve's map stays the same size. Per question the two are close, and the file wiki's figure assumes it never opens a wrong page. `recall` included the page that answers the question for 19 of the 20; that measures retrieval, not whether the answer was right. The gist suggests a search engine such as [qmd](https://github.com/tobi/qmd) once a wiki outgrows its index, which narrows the gap. To check with your own memory, run the script against your server with your own questions.
 
 ## Server
 

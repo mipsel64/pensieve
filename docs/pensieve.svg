@@ -1,0 +1,80 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 590" role="img" aria-labelledby="title desc" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">
+  <title id="title">Pensieve: one memory for all your agents</title>
+  <desc id="desc">Claude Code, Codex and Pi connect from any device using MCP over HTTPS to a Pensieve server. Markdown pages, revisions, links, search and journal live in one SQLite file. A read-only web UI shows search, graph, timeline and journal.</desc>
+  <rect x="1" y="1" width="1278" height="588" rx="25" fill="#030404" stroke="#1f2727" stroke-width="2"/>
+
+  <g transform="translate(42 38) scale(1.55)" color="#87cbbd">
+    <path d="M12.8 13.2c-2.4-2.6.2-4.7 2.3-6.4 1.7-1.4 1.3-3.3-.3-4.3M18.6 13.4c1.7-2-.1-3.6 1.5-5.4.9-1 2.1-1.3 3.1-1" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" opacity=".55"/>
+    <ellipse cx="16" cy="16" rx="12.5" ry="3.2" fill="currentColor"/>
+    <path d="M3.5 16.6C4.6 22.7 9.8 27 16 27s11.4-4.3 12.5-10.4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" opacity=".7"/>
+  </g>
+  <text x="105" y="78" fill="#eef2f1" font-size="34" font-weight="650" letter-spacing="-.7">Pensieve</text>
+  <text x="44" y="121" fill="#bec5c4" font-size="19">One memory for all your agents, on every device</text>
+  <path d="M42 151H1238" stroke="#1f2727"/>
+
+  <rect x="40" y="190" width="230" height="302" rx="18" fill="#0d1111" stroke="#354141"/>
+  <text x="58" y="229" fill="#eef2f1" font-size="22" font-weight="600">Agents</text>
+  <rect x="56" y="251" width="198" height="55" rx="10" fill="#141919" stroke="#1f2727"/>
+  <circle cx="79" cy="279" r="11" fill="#8fb6dc" fill-opacity=".17" stroke="#8fb6dc"/>
+  <text x="98" y="285" fill="#eef2f1" font-size="17">Claude Code</text>
+  <rect x="56" y="319" width="198" height="55" rx="10" fill="#141919" stroke="#1f2727"/>
+  <circle cx="79" cy="347" r="11" fill="#b3a4e0" fill-opacity=".17" stroke="#b3a4e0"/>
+  <text x="98" y="353" fill="#eef2f1" font-size="17">Codex</text>
+  <rect x="56" y="387" width="198" height="69" rx="10" fill="#141919" stroke="#1f2727"/>
+  <circle cx="79" cy="420" r="11" fill="#d9bd86" fill-opacity=".17" stroke="#d9bd86"/>
+  <text x="98" y="414" fill="#eef2f1" font-size="17">Pi</text>
+  <text x="98" y="438" fill="#bec5c4" font-size="15">via pi-pensieve</text>
+  <text x="58" y="481" fill="#838e8d" font-size="16">any device</text>
+
+  <text x="366" y="250" fill="#bec5c4" font-size="16" text-anchor="middle">MCP over HTTPS</text>
+  <text x="366" y="274" fill="#bec5c4" font-size="16" text-anchor="middle">bearer token</text>
+  <path d="M287 320H444m-11-10 11 10-11 10" fill="none" stroke="#87cbbd" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <text x="366" y="361" fill="#87cbbd" font-size="15" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">recall · search</text>
+  <text x="366" y="387" fill="#87cbbd" font-size="15" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">read · write · edit</text>
+
+  <rect x="462" y="190" width="422" height="288" rx="18" fill="#0d1111" stroke="#354141" stroke-width="1.5"/>
+  <circle cx="489" cy="222" r="5" fill="#87cbbd"/>
+  <text x="507" y="230" fill="#eef2f1" font-size="24" font-weight="650">pensieve</text>
+  <rect x="480" y="254" width="386" height="40" rx="10" fill="#141919" stroke="#1f2727"/>
+  <circle cx="502" cy="274" r="5" fill="#8fb6dc"/>
+  <text x="519" y="280" fill="#eef2f1" font-size="16">Markdown pages + revisions</text>
+  <rect x="480" y="305" width="386" height="40" rx="10" fill="#141919" stroke="#1f2727"/>
+  <circle cx="502" cy="325" r="5" fill="#b3a4e0"/>
+  <text x="519" y="331" fill="#eef2f1" font-size="16">[[link]] graph</text>
+  <rect x="480" y="356" width="386" height="40" rx="10" fill="#141919" stroke="#1f2727"/>
+  <circle cx="502" cy="376" r="5" fill="#a3c98f"/>
+  <text x="519" y="382" fill="#eef2f1" font-size="16">Section index · BM25 + optional Jev rerank</text>
+  <rect x="480" y="407" width="386" height="40" rx="10" fill="#141919" stroke="#1f2727"/>
+  <circle cx="502" cy="427" r="5" fill="#b9aaa0"/>
+  <text x="519" y="433" fill="#eef2f1" font-size="16">Journal · session notes</text>
+  <path d="M673 478v16" stroke="#354141" stroke-width="2"/>
+  <path d="M567 506c0-7 47-12 106-12s106 5 106 12v34c0 7-47 12-106 12s-106-5-106-12z" fill="#141919" stroke="#354141"/>
+  <path d="M567 506c0 7 47 12 106 12s106-5 106-12" fill="none" stroke="#354141"/>
+  <text x="673" y="542" fill="#bec5c4" font-size="16" text-anchor="middle">one SQLite file</text>
+
+  <path d="M898 334h38m-10-10 10 10-10 10" fill="none" stroke="#87cbbd" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <rect x="950" y="190" width="290" height="302" rx="18" fill="#0d1111" stroke="#354141"/>
+  <path d="M950 224h290" stroke="#354141"/>
+  <circle cx="970" cy="207" r="4" fill="#df9696"/>
+  <circle cx="985" cy="207" r="4" fill="#d9bd86"/>
+  <circle cx="1000" cy="207" r="4" fill="#a3c98f"/>
+  <text x="972" y="262" fill="#eef2f1" font-size="21" font-weight="600">Web UI <tspan fill="#bec5c4" font-size="16" font-weight="400">(read-only)</tspan></text>
+  <rect x="969" y="278" width="252" height="124" rx="11" fill="#141919" stroke="#1f2727"/>
+  <g fill="none" stroke="#5b6b69" stroke-width="1.5">
+    <path d="M1009 365 1050 318 1096 346 1150 307 1184 351M1050 318l-1 55 47-27 44 25 44-20M1096 346l-15-45"/>
+  </g>
+  <g stroke-width="2">
+    <circle cx="1009" cy="365" r="6" fill="#141919" stroke="#8fb6dc"/>
+    <circle cx="1050" cy="318" r="8" fill="#141919" stroke="#87cbbd"/>
+    <circle cx="1049" cy="373" r="5" fill="#141919" stroke="#b9aaa0"/>
+    <circle cx="1081" cy="301" r="5" fill="#141919" stroke="#d9bd86"/>
+    <circle cx="1096" cy="346" r="10" fill="#141919" stroke="#b3a4e0"/>
+    <circle cx="1140" cy="371" r="5" fill="#141919" stroke="#a3c98f"/>
+    <circle cx="1150" cy="307" r="7" fill="#141919" stroke="#8fb6dc"/>
+    <circle cx="1184" cy="351" r="6" fill="#141919" stroke="#b9aaa0"/>
+  </g>
+  <text x="974" y="433" fill="#bec5c4" font-size="16">search</text>
+  <text x="1092" y="433" fill="#bec5c4" font-size="16">graph</text>
+  <text x="974" y="465" fill="#bec5c4" font-size="16">timeline</text>
+  <text x="1092" y="465" fill="#bec5c4" font-size="16">journal</text>
+</svg>
