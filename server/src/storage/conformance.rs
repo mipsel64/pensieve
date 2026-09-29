@@ -254,6 +254,9 @@ pub(crate) async fn check(storage: &dyn Storage) {
             .unwrap()
             .is_empty()
     );
+    let stats = storage.stats().await.unwrap();
+    assert!(!stats.orphans.iter().any(|t| t == "Scratchpad"));
+    assert!(stats.stale.iter().all(|p| p.title != "Scratchpad"));
 
     assert_eq!(storage.settings().await.unwrap(), None);
     storage.save_settings(r#"{"a":1}"#).await.unwrap();

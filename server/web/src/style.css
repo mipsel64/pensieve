@@ -2061,6 +2061,7 @@ button:disabled {
 }
 
 .link-lists h3,
+.journal-scratchpad h3,
 .recent-changes h3 {
   margin-bottom: 6px;
   color: var(--text-2);
@@ -2078,6 +2079,11 @@ button:disabled {
 
 .link-lists li {
   overflow-wrap: anywhere;
+}
+
+.journal-days a[aria-current='page'] {
+  color: var(--text);
+  font-weight: 600;
 }
 
 .recent-changes li {
@@ -2136,6 +2142,15 @@ button:disabled {
 .prose ul,
 .prose ol {
   padding-left: 1.4em;
+}
+
+/* The checkbox sits where the bullet would, so nesting and plain siblings keep their layout. */
+.prose .task-list-item {
+  list-style: none;
+}
+
+.prose .task-list-item > input {
+  margin: 0 0.4em 0 -1.35em;
 }
 
 .prose li + li {

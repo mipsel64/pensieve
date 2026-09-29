@@ -438,8 +438,9 @@ fn history(conn: &Connection, filter: &HistoryFilter, limit: usize) -> Result<Ve
 
 const MISSING: &str =
     "FROM links l LEFT JOIN pages d ON d.title = l.dst WHERE d.id IS NULL GROUP BY l.dst";
-const ORPHANS: &str =
-    "FROM pages p WHERE NOT EXISTS (SELECT 1 FROM links l WHERE l.dst = p.title AND l.src != p.id)";
+// Journals are unlinked and left unread by design, so they'd crowd out the curated pages these lists are for.
+const ORPHANS: &str = "FROM pages p WHERE (p.type IS NULL OR p.type != 'journal')
+     AND NOT EXISTS (SELECT 1 FROM links l WHERE l.dst = p.title AND l.src != p.id)";
 
 fn stats(conn: &Connection) -> Result<Stats> {
     let count = |sql: &str| conn.query_row(sql, [], |r| r.get::<_, i64>(0));
@@ -480,6 +481,7 @@ fn stats(conn: &Connection) -> Result<Stats> {
     let stale = conn
         .prepare_cached(
             "SELECT p.title, p.updated_at, v.at FROM pages p LEFT JOIN visits v ON v.page = p.id
+             WHERE p.type IS NULL OR p.type != 'journal'
              ORDER BY max(p.updated_at, COALESCE(v.at, '')), p.title LIMIT 10",
         )?
         .query_map([], |r| {
