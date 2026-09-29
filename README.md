@@ -102,18 +102,20 @@ Pi reaches MCP servers through [pi-mcp-adapter](https://github.com/nicobailon/pi
 Pensieve is my shared memory. At the start of a session, read its guide with `mcp({ instructions: "pensieve" })`, and recall from it before answering from memory.
 ```
 
+Or install [pi-pensieve](https://github.com/mipsel64/pi-pensieve), which reads the same `mcp.json` entry, adds the instructions, the open `Scratchpad` items and recent journal entries to Pi's system prompt, and appends a summary of each session to that day's `Journal YYYY-MM-DD` page when Pi quits.
+
 Tools:
 
 | Tool | |
 |---|---|
-| `recall` | The passages most relevant to a question, ranked, within a token budget (default 2,000). The agent adds keywords (synonyms, identifiers, likely titles) to catch notes that use different words. Lists related pages that didn't fit. |
-| `search` | Keyword (BM25) search returning page titles and snippets. |
+| `recall` | The passages most relevant to a question, ranked, within a token budget (default 2,000). The agent adds keywords (synonyms, identifiers, likely titles) to catch notes that use different words. Lists related pages that didn't fit. Skips journals unless `type: "journal"` is passed; `type` can select any one page type. |
+| `search` | Keyword (BM25) search returning page titles and snippets; an empty query lists recent pages. Skips journals unless `type: "journal"` is passed; `type` can select any one page type. |
 | `read` | A page or one section, with its type, rev, section list, links and backlinks. |
 | `write` | Create or replace a page. Needs a one-line `summary`, and `base_rev` when replacing, so a stale write from one device can't overwrite a newer change from another. |
 | `edit` | Replace one exact snippet, or append to the end of a named section. Needs a `summary`. |
 
 `write` and `edit` reply with what to fix: links to missing pages, a missing `type`, and pages mentioned without a link in either direction. The `ingest` prompt (`/mcp__pensieve__ingest <source>` in Claude Code and Pi) walks an agent through filing a source.
 
-Agent guidance ships with the server. The MCP instructions cover when to recall and when to write, the frontmatter fields (`type`, `tags`, `sources`, `confidence`) and linking conventions, followed by a generated map of memory: page counts per type, the most linked pages and recent writes. `type` is one of `topic`, `entity`, `source`, `synthesis`, `runbook`, `incident` or `audit`; other values are rejected. Pensieve tracks timestamps, backlinks and history itself, so the index, log and hub pages a file-based LLM wiki needs aren't maintained by hand.
+Agent guidance ships with the server. The MCP instructions cover when to recall and when to write, the frontmatter fields (`type`, `tags`, `sources`, `confidence`) and linking conventions, followed by a generated map of memory: page counts per type, the most linked pages and recent writes. `type` is one of `topic`, `entity`, `source`, `synthesis`, `runbook`, `incident`, `audit` or `journal` (short-term session notes: daily `Journal YYYY-MM-DD` pages and `Scratchpad`); other values are rejected. Pensieve tracks timestamps, backlinks and history itself, so the index, log and hub pages a file-based LLM wiki needs aren't maintained by hand.
 
 Each write is recorded with its summary and the agent that made it, from `X-Pensieve-Agent`. Each page read through `read`, `recall` or the web UI updates its last visit time, `visited_at`, so stale pages can be found later. Scripts can read with `GET /api/pages/{title}?visit=false` without counting as a visit.

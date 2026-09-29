@@ -26,11 +26,17 @@ pub trait Storage: Send + Sync {
     async fn save(&self, draft: Draft) -> Result<i64>;
 
     /// Pages, best matches first, with matched terms in `snippet` wrapped in `«` `»`.
-    /// An empty query lists recently updated pages.
-    async fn search(&self, query: &str, limit: usize) -> Result<Vec<Hit>>;
+    /// An empty query lists recently updated pages. Without a type, journals are excluded.
+    async fn search(&self, query: &str, kind: Option<&str>, limit: usize) -> Result<Vec<Hit>>;
 
     /// Sections matching any of `terms`, best first. Multi-word terms match as phrases.
-    async fn search_sections(&self, terms: &[String], limit: usize) -> Result<Vec<Passage>>;
+    /// Without a type, journals are excluded.
+    async fn search_sections(
+        &self,
+        terms: &[String],
+        kind: Option<&str>,
+        limit: usize,
+    ) -> Result<Vec<Passage>>;
 
     /// Records that a page was read now, for staleness-based eviction.
     async fn visit(&self, title: &str) -> Result<()>;
@@ -147,12 +153,7 @@ impl Draft {
             return Err(Error::invalid("cannot save a page with empty content"));
         }
         let kind = markdown::field(content, "type");
-        if let Some(kind) = kind.as_deref().filter(|kind| !KINDS.contains(kind)) {
-            return Err(Error::invalid(format!(
-                "cannot use type {kind:?}; use one of: {}",
-                KINDS.join(", ")
-            )));
-        }
+        validate_kind(kind.as_deref())?;
         Ok(Self {
             title: title.to_owned(),
             content: content.to_owned(),
@@ -169,6 +170,16 @@ impl Draft {
                 .map(str::to_owned),
         })
     }
+}
+
+pub fn validate_kind(kind: Option<&str>) -> Result<()> {
+    if let Some(kind) = kind.filter(|kind| !KINDS.contains(kind)) {
+        return Err(Error::invalid(format!(
+            "cannot use type {kind:?}; use one of: {}",
+            KINDS.join(", ")
+        )));
+    }
+    Ok(())
 }
 
 #[derive(Serialize, Clone, Debug)]

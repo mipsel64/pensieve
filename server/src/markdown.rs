@@ -3,7 +3,7 @@
 use std::collections::HashSet;
 
 /// Allowed values of the frontmatter `type` field.
-pub const KINDS: [&str; 7] = [
+pub const KINDS: [&str; 8] = [
     "topic",
     "entity",
     "source",
@@ -11,6 +11,7 @@ pub const KINDS: [&str; 7] = [
     "runbook",
     "incident",
     "audit",
+    "journal",
 ];
 
 #[derive(Clone, Debug, PartialEq)]

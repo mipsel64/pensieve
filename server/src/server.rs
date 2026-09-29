@@ -172,6 +172,8 @@ struct RecallParams {
     #[serde(default)]
     keywords: String,
     budget: Option<usize>,
+    #[serde(rename = "type")]
+    kind: Option<String>,
 }
 
 async fn recall(
@@ -195,6 +197,7 @@ async fn recall(
         app.reranker.as_deref(),
         &params.q,
         &keywords,
+        params.kind.as_deref(),
         budget,
     )
     .await?;
@@ -212,6 +215,8 @@ struct SearchParams {
     q: String,
     limit: Option<usize>,
     rerank: Option<bool>,
+    #[serde(rename = "type")]
+    kind: Option<String>,
 }
 
 async fn search(
@@ -223,7 +228,14 @@ async fn search(
         .reranker
         .as_deref()
         .filter(|_| params.rerank.unwrap_or(true));
-    let found = retrieval::search(app.storage.as_ref(), reranker, &params.q, limit).await?;
+    let found = retrieval::search(
+        app.storage.as_ref(),
+        reranker,
+        &params.q,
+        params.kind.as_deref(),
+        limit,
+    )
+    .await?;
     Ok(Json(
         json!({ "reranked": found.reranked, "hits": found.hits }),
     ))
@@ -362,6 +374,107 @@ mod tests {
 
     use super::*;
     use crate::storage::SqliteStorage;
+
+    #[tokio::test]
+    async fn journal_retrieval_requires_type() {
+        let token = "test-token-0123456789";
+        let storage = Arc::new(SqliteStorage::open(Path::new(":memory:")).unwrap());
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let base = format!("http://{}/api", listener.local_addr().unwrap());
+        let app = Arc::new(App {
+            storage,
+            reranker: None,
+            token: token.into(),
+        });
+        tokio::spawn(axum::serve(listener, router(app)).into_future());
+        let http = Client::new();
+        for (title, kind) in [("Redis", "topic"), ("Scratchpad", "journal")] {
+            let response = http
+                .put(format!("{base}/pages/{title}"))
+                .bearer_auth(token)
+                .json(&json!({ "content": format!("---\ntype: {kind}\n---\nRedis cache notes.") }))
+                .send()
+                .await
+                .unwrap();
+            assert_eq!(response.status(), StatusCode::OK);
+        }
+        for path in ["/search?q=cache", "/search", "/recall?q=cache"] {
+            let response: Value = http
+                .get(format!("{base}{path}"))
+                .bearer_auth(token)
+                .send()
+                .await
+                .unwrap()
+                .json()
+                .await
+                .unwrap();
+            let entries = response[if path.starts_with("/search") {
+                "hits"
+            } else {
+                "passages"
+            }]
+            .as_array()
+            .unwrap();
+            assert!(
+                entries.iter().all(|entry| entry["title"] == "Redis") && !entries.is_empty(),
+                "{path}: {response}"
+            );
+            assert!(
+                response["leads"]
+                    .as_array()
+                    .is_none_or(|leads| leads.is_empty()),
+                "{path}: {response}"
+            );
+        }
+        for path in [
+            "/search?q=cache&type=journal",
+            "/search?type=journal",
+            "/recall?q=cache&type=journal",
+        ] {
+            let response: Value = http
+                .get(format!("{base}{path}"))
+                .bearer_auth(token)
+                .send()
+                .await
+                .unwrap()
+                .json()
+                .await
+                .unwrap();
+            let entries = response[if path.starts_with("/search") {
+                "hits"
+            } else {
+                "passages"
+            }]
+            .as_array()
+            .unwrap();
+            assert!(
+                entries.iter().all(|entry| entry["title"] == "Scratchpad") && !entries.is_empty(),
+                "{path}: {response}"
+            );
+            assert!(
+                response["leads"]
+                    .as_array()
+                    .is_none_or(|leads| leads.is_empty()),
+                "{path}: {response}"
+            );
+        }
+        for path in ["/search?type=wrong", "/recall?q=cache&type=wrong"] {
+            let response = http
+                .get(format!("{base}{path}"))
+                .bearer_auth(token)
+                .send()
+                .await
+                .unwrap();
+            assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
+            assert!(
+                response
+                    .text()
+                    .await
+                    .unwrap()
+                    .contains("cannot use type \"wrong\"; use one of:")
+            );
+        }
+    }
 
     #[tokio::test]
     async fn browser_sessions_read_but_never_write() {

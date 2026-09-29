@@ -117,14 +117,14 @@ pub(crate) async fn check(storage: &dyn Storage) {
         Err(Error::Invalid { .. })
     ));
 
-    let hits = storage.search("cache", 10).await.unwrap();
+    let hits = storage.search("cache", None, 10).await.unwrap();
     assert_eq!(hits[0].title, "Redis");
     assert!(hits[0].snippet.contains("«cache»"));
-    assert!(storage.search("\"unbalanced OR (", 10).await.is_ok());
-    assert_eq!(storage.search("", 1).await.unwrap()[0].title, "Redis");
+    assert!(storage.search("\"unbalanced OR (", None, 10).await.is_ok());
+    assert_eq!(storage.search("", None, 1).await.unwrap()[0].title, "Redis");
 
     let passages = storage
-        .search_sections(&["volatile lru".into(), "zzz".into()], 5)
+        .search_sections(&["volatile lru".into(), "zzz".into()], None, 5)
         .await
         .unwrap();
     assert_eq!(
@@ -135,7 +135,7 @@ pub(crate) async fn check(storage: &dyn Storage) {
     assert_eq!(passages[0].kind.as_deref(), Some("topic"));
     assert!(
         storage
-            .search_sections(&["\"(".into()], 5)
+            .search_sections(&["\"(".into()], None, 5)
             .await
             .unwrap()
             .is_empty()
@@ -197,6 +197,63 @@ pub(crate) async fn check(storage: &dyn Storage) {
     );
 
     assert_eq!(storage.pages().await.unwrap().len(), 2);
+
+    storage
+        .put(
+            "Scratchpad",
+            "---\ntype: journal\n---\nRedis cache. volatile-lru only evicts keys with a TTL.",
+            None,
+            T,
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        storage.page("Scratchpad").await.unwrap().kind.as_deref(),
+        Some("journal")
+    );
+    assert_eq!(storage.search("", None, 1).await.unwrap()[0].title, "Redis");
+    assert_eq!(
+        storage.search("cache", None, 1).await.unwrap()[0].title,
+        "Redis"
+    );
+    assert_eq!(
+        storage.search("cache", Some("journal"), 1).await.unwrap()[0].title,
+        "Scratchpad"
+    );
+    assert_eq!(
+        storage.search("", Some("journal"), 1).await.unwrap()[0].title,
+        "Scratchpad"
+    );
+    assert!(
+        storage
+            .search("cache", Some("runbook"), 5)
+            .await
+            .unwrap()
+            .is_empty()
+    );
+    assert_eq!(
+        storage
+            .search_sections(&["volatile lru".into()], None, 1)
+            .await
+            .unwrap()[0]
+            .title,
+        "Redis"
+    );
+    assert_eq!(
+        storage
+            .search_sections(&["volatile lru".into()], Some("journal"), 1)
+            .await
+            .unwrap()[0]
+            .title,
+        "Scratchpad"
+    );
+    assert!(
+        storage
+            .search_sections(&["volatile lru".into()], Some("runbook"), 5)
+            .await
+            .unwrap()
+            .is_empty()
+    );
 
     assert_eq!(storage.settings().await.unwrap(), None);
     storage.save_settings(r#"{"a":1}"#).await.unwrap();
