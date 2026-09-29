@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use crate::{
     error::Result,
     rerank::{Candidate, Reranker},
-    storage::{Hit, Passage, Storage},
+    storage::{self, Hit, Passage, Storage},
 };
 
 /// Candidate pool handed to the reranker; recall is bounded by keyword search at this depth.
@@ -49,13 +49,16 @@ pub async fn search(
     storage: &dyn Storage,
     reranker: Option<&dyn Reranker>,
     query: &str,
+    kind: Option<&str>,
     limit: usize,
 ) -> Result<Searched> {
+    storage::validate_kind(kind)?;
     let query = truncate(query, MAX_QUERY_BYTES);
     let reranker = reranker.filter(|_| !query.trim().is_empty());
     let mut hits = storage
         .search(
             query,
+            kind,
             if reranker.is_some() {
                 CANDIDATES.max(limit)
             } else {
@@ -102,8 +105,10 @@ pub async fn recall(
     reranker: Option<&dyn Reranker>,
     question: &str,
     keywords: &[String],
+    kind: Option<&str>,
     budget: usize,
 ) -> Result<Recalled> {
+    storage::validate_kind(kind)?;
     let question = truncate(question, MAX_QUERY_BYTES);
     // Keywords first: the query keeps only its first terms, and the agent's keywords are the most deliberate.
     let mut terms: Vec<_> = keywords
@@ -117,7 +122,7 @@ pub async fn recall(
             .filter(|w| !w.is_empty() && !STOPWORDS.contains(&w.to_lowercase().as_str()))
             .map(str::to_owned),
     );
-    let matches = storage.search_sections(&terms, CANDIDATES).await?;
+    let matches = storage.search_sections(&terms, kind, CANDIDATES).await?;
 
     let mut ranked = matches.clone();
     let mut reranked = false;
@@ -193,7 +198,10 @@ pub async fn recall(
         if let Ok(page) = storage.page(title).await {
             page.links
                 .iter()
-                .filter(|l| l.kind.is_some())
+                .filter(|l| match kind {
+                    Some(kind) => l.kind.as_deref() == Some(kind),
+                    None => l.kind.as_deref().is_some_and(|k| k != "journal"),
+                })
                 .for_each(|l| add_lead(&l.title));
         }
     }

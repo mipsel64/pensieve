@@ -70,14 +70,22 @@ impl Storage for SqliteStorage {
         self.run(move |conn| save(conn, &draft)).await
     }
 
-    async fn search(&self, query: &str, limit: usize) -> Result<Vec<Hit>> {
+    async fn search(&self, query: &str, kind: Option<&str>, limit: usize) -> Result<Vec<Hit>> {
         let query = query.to_owned();
-        self.run(move |conn| search(conn, &query, limit)).await
+        let kind = kind.map(str::to_owned);
+        self.run(move |conn| search(conn, &query, kind.as_deref(), limit))
+            .await
     }
 
-    async fn search_sections(&self, terms: &[String], limit: usize) -> Result<Vec<Passage>> {
+    async fn search_sections(
+        &self,
+        terms: &[String],
+        kind: Option<&str>,
+        limit: usize,
+    ) -> Result<Vec<Passage>> {
         let terms = terms.to_vec();
-        self.run(move |conn| search_sections(conn, &terms, limit))
+        let kind = kind.map(str::to_owned);
+        self.run(move |conn| search_sections(conn, &terms, kind.as_deref(), limit))
             .await
     }
 
@@ -272,7 +280,7 @@ fn save(conn: &mut Connection, draft: &Draft) -> Result<i64> {
     Ok(rev)
 }
 
-fn search(conn: &Connection, query: &str, limit: usize) -> Result<Vec<Hit>> {
+fn search(conn: &Connection, query: &str, kind: Option<&str>, limit: usize) -> Result<Vec<Hit>> {
     let limit = i64::try_from(limit).unwrap_or(i64::MAX);
     let words: Vec<_> = query
         .split(|c: char| !c.is_alphanumeric())
@@ -283,9 +291,10 @@ fn search(conn: &Connection, query: &str, limit: usize) -> Result<Vec<Hit>> {
             .prepare_cached(
                 "SELECT p.title, p.rev, p.updated_at, substr(p.content, 1, 200), 0.0, '', p.type
                  FROM pages p JOIN revisions r ON r.title = p.title AND r.rev = p.rev
+                 WHERE (?2 IS NULL AND (p.type IS NULL OR p.type != 'journal')) OR p.type = ?2
                  ORDER BY r.rowid DESC LIMIT ?1",
             )?
-            .query_map([limit], hit)?
+            .query_map(params![limit, kind], hit)?
             .collect::<rusqlite::Result<_>>()
             .map_err(Into::into);
     };
@@ -293,14 +302,21 @@ fn search(conn: &Connection, query: &str, limit: usize) -> Result<Vec<Hit>> {
         "SELECT p.title, p.rev, p.updated_at, snippet(pages_fts, -1, '«', '»', '…', 24),
                 -bm25(pages_fts, 10.0, 1.0), substr(p.content, 1, ?3), p.type
          FROM pages_fts JOIN pages p ON p.id = pages_fts.rowid
-         WHERE pages_fts MATCH ?1 ORDER BY 5 DESC LIMIT ?2",
+         WHERE pages_fts MATCH ?1 AND
+               ((?4 IS NULL AND (p.type IS NULL OR p.type != 'journal')) OR p.type = ?4)
+         ORDER BY 5 DESC LIMIT ?2",
     )?
-    .query_map(params![query, limit, EXCERPT_CHARS], hit)?
+    .query_map(params![query, limit, EXCERPT_CHARS, kind], hit)?
     .collect::<rusqlite::Result<_>>()
     .map_err(Into::into)
 }
 
-fn search_sections(conn: &Connection, terms: &[String], limit: usize) -> Result<Vec<Passage>> {
+fn search_sections(
+    conn: &Connection,
+    terms: &[String],
+    kind: Option<&str>,
+    limit: usize,
+) -> Result<Vec<Passage>> {
     let Some(query) = fts_query(terms) else {
         return Ok(Vec::new());
     };
@@ -309,9 +325,11 @@ fn search_sections(conn: &Connection, terms: &[String], limit: usize) -> Result<
         "SELECT p.title, s.heading, s.ord, s.body, p.rev, p.updated_at, p.type, p.confidence,
                 -bm25(sections_fts, 5.0, 3.0, 1.0)
          FROM sections_fts JOIN sections s ON s.id = sections_fts.rowid JOIN pages p ON p.id = s.page
-         WHERE sections_fts MATCH ?1 ORDER BY 9 DESC LIMIT ?2",
+         WHERE sections_fts MATCH ?1 AND
+               ((?3 IS NULL AND (p.type IS NULL OR p.type != 'journal')) OR p.type = ?3)
+         ORDER BY 9 DESC LIMIT ?2",
     )?
-    .query_map(params![query, limit], |r| {
+    .query_map(params![query, limit, kind], |r| {
         Ok(Passage {
             title: r.get(0)?,
             heading: r.get(1)?,

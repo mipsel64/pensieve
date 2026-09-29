@@ -5,7 +5,7 @@ import { AlertTriangle, Loader2 } from 'lucide-react';
 import { api, Unauthorized } from './api.js';
 import { RouteContext, usePageHref } from './router.js';
 
-export const KINDS = ['topic', 'entity', 'source', 'synthesis', 'runbook', 'incident', 'audit'];
+export const KINDS = ['topic', 'entity', 'source', 'synthesis', 'runbook', 'incident', 'audit', 'journal'];
 // Muted like the mist, but far enough apart in hue to tell the types apart.
 export const KIND_COLORS = {
   topic: '#8fb6dc',
@@ -15,6 +15,7 @@ export const KIND_COLORS = {
   runbook: '#a3c98f',
   incident: '#df9696',
   audit: '#d59fc2',
+  journal: '#b9aaa0',
   untyped: '#8d9797',
   missing: '#5c6868',
 };
