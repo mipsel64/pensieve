@@ -1,10 +1,39 @@
 # Pensieve
 
+![Claude Code, Codex and Pi connect over MCP to a Pensieve server, which keeps pages, links, a section index and the journal in one SQLite file; a read-only web UI shows search, the graph, the timeline and the journal.](docs/pensieve.svg)
+
 Persistent memory for agents, shared across devices. It follows the [LLM Wiki](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f) pattern: agents keep a Markdown wiki connected by `[[links]]`. Pages are stored in one SQLite database on a server instead of a folder that has to be synced between machines.
 
 `pensieve` stores pages in SQLite and keeps revision history, the link graph and a section index. It serves MCP at `/mcp`, the HTTP API and a web UI. Agents connect to `/mcp` by URL, so tools and agent guidance change with a server upgrade, with nothing to install on each device.
 
 Pages are indexed per `##`/`###` section with SQLite FTS5 BM25. With a Jev key, `recall` sends the top 40 matching sections to [Jev](https://vercel.com/ai-gateway/models/jev), which scores how likely each is to help, and drops the unlikely ones, as in [jevgrep](https://github.com/dzhng/jevgrep). If Jev fails, results fall back to BM25 order.
+
+## Fewer tokens than a file wiki
+
+![Tokens an agent reads from memory, on about 300 pages: session start 1,415 with Pensieve versus 12,436 for a file wiki (89% fewer); first question 3,341 versus 14,657 (77% fewer); a 20-question session 36,134 versus 61,823 (42% fewer).](docs/tokens.svg)
+
+A file-based LLM Wiki has the agent read `index.md`, the catalog of every page, before it can open anything. Pensieve instead sends a map of memory that stays the same size, and `recall` returns only the sections that match. On the maintainer's own memory, about 300 pages:
+
+- **89% fewer tokens at session start:** 1,415 instead of 12,436.
+- **77% fewer to answer the first question:** 3,341 instead of 14,657, about 11,300 tokens saved in every session that consults memory.
+- **42% fewer across a session of 20 questions:** 36,134 instead of 61,823, a saving of 25,689 tokens.
+
+**The gap grows with memory.** Every page adds a line to `index.md`, about 37 tokens, and the file wiki reads the whole index in every session. At that rate a 1,000-page wiki spends about 37,000 tokens on its index before the first question, and a 3,000-page wiki about 112,000, more than half of a 200,000-token context window. Pensieve's map lists page counts and the most linked and most recent pages, so it stays about 1,400 tokens however large memory grows.
+
+**The file wiki is shown at its best.** For each question it opens exactly the page with the answer, in full, and nothing else; an agent that opens a wrong page, or a second one, reads more. Pensieve's figures are what `recall` actually returned. Per question the two are close (a median of 1,926 tokens against 2,221), so almost all of the saving comes from not reading the index.
+
+<details>
+<summary>How it was measured</summary>
+
+[`scripts/token-bench.py`](scripts/token-bench.py) ran 20 everyday questions against the maintainer's memory, both as the original file wiki and after importing it into Pensieve. The questions were written from the wiki's index, each with the page that answers it. Tokens are counted with `o200k_base`, and `recall` used its default 2,000-token budget with Jev reranking. Jev's ranking moves Pensieve's figures by a few percent between runs, so each is the middle of three. Pensieve's session start includes its MCP instructions and tool definitions; the file wiki's is its `AGENTS.md` and `index.md`.
+
+`recall` returned the page with the answer for 19 of the 20 questions. That measures retrieval, not whether the final answer was right, and when `recall` misses, the agent has to search again. The gist suggests adding a search engine such as [qmd](https://github.com/tobi/qmd) once a wiki outgrows its index, which would narrow the gap. To measure your own memory, run the script against your server with your own questions and pages:
+
+```sh
+PENSIEVE_TOKEN=... scripts/token-bench.py --url https://my-server.tailnet.ts.net --wiki ~/wiki --questions questions.json
+```
+
+</details>
 
 ## Server
 
