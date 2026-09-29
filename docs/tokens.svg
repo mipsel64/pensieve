@@ -1,0 +1,46 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 540" role="img" aria-labelledby="title desc" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">
+  <title id="title">Tokens an agent reads from memory: Pensieve versus a file wiki</title>
+  <desc id="desc">On about 300 pages, with the file wiki given its best case. Session start: 1,415 tokens with Pensieve versus 12,436, 89% fewer. First question of a session: 3,341 versus 14,657, 77% fewer. A session asking 20 questions: 36,134 versus 61,823, 42% fewer.</desc>
+  <rect x="1" y="1" width="1278" height="538" rx="25" fill="#030404" stroke="#1f2727" stroke-width="2"/>
+
+  <text x="48" y="72" fill="#eef2f1" font-size="30" font-weight="650" letter-spacing="-.5">Tokens an agent reads from memory</text>
+  <text x="48" y="106" fill="#bec5c4" font-size="18">About 300 pages · the file wiki opens only the page that answers each question</text>
+  <rect x="870" y="56" width="14" height="14" rx="3" fill="#1d2424" stroke="#5b6b69"/>
+  <text x="892" y="68" fill="#bec5c4" font-size="16">File wiki, best case</text>
+  <rect x="1072" y="56" width="14" height="14" rx="3" fill="#87cbbd"/>
+  <text x="1094" y="68" fill="#bec5c4" font-size="16">Pensieve</text>
+  <path d="M48 136H1232" stroke="#1f2727"/>
+
+  <g>
+    <text x="48" y="186" fill="#eef2f1" font-size="20" font-weight="600">Session start</text>
+    <text x="48" y="212" fill="#838e8d" font-size="15">before the first question</text>
+    <rect x="330" y="166" width="620" height="24" rx="6" fill="#1d2424" stroke="#5b6b69"/>
+    <text x="962" y="184" fill="#bec5c4" font-size="16" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">12,436</text>
+    <rect x="330" y="198" width="71" height="24" rx="6" fill="#87cbbd"/>
+    <text x="413" y="216" fill="#eef2f1" font-size="16" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">1,415</text>
+    <text x="1232" y="208" fill="#87cbbd" font-size="42" font-weight="650" text-anchor="end">−89%</text>
+  </g>
+
+  <g>
+    <text x="48" y="290" fill="#eef2f1" font-size="20" font-weight="600">First question</text>
+    <text x="48" y="316" fill="#838e8d" font-size="15">session start and one answer</text>
+    <rect x="330" y="270" width="620" height="24" rx="6" fill="#1d2424" stroke="#5b6b69"/>
+    <text x="962" y="288" fill="#bec5c4" font-size="16" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">14,657</text>
+    <rect x="330" y="302" width="141" height="24" rx="6" fill="#87cbbd"/>
+    <text x="483" y="320" fill="#eef2f1" font-size="16" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">3,341</text>
+    <text x="1232" y="312" fill="#87cbbd" font-size="42" font-weight="650" text-anchor="end">−77%</text>
+  </g>
+
+  <g>
+    <text x="48" y="394" fill="#eef2f1" font-size="20" font-weight="600">20-question session</text>
+    <text x="48" y="420" fill="#838e8d" font-size="15">session start and 20 answers</text>
+    <rect x="330" y="374" width="620" height="24" rx="6" fill="#1d2424" stroke="#5b6b69"/>
+    <text x="962" y="392" fill="#bec5c4" font-size="16" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">61,823</text>
+    <rect x="330" y="406" width="362" height="24" rx="6" fill="#87cbbd"/>
+    <text x="704" y="424" fill="#eef2f1" font-size="16" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">36,134</text>
+    <text x="1232" y="416" fill="#87cbbd" font-size="42" font-weight="650" text-anchor="end">−42%</text>
+  </g>
+
+  <path d="M48 466H1232" stroke="#1f2727"/>
+  <text x="48" y="502" fill="#838e8d" font-size="15">Measured with scripts/token-bench.py · tiktoken o200k_base · recall budget 2,000 with Jev reranking · bars scaled per row</text>
+</svg>

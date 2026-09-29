@@ -8,20 +8,32 @@ Persistent memory for agents, shared across devices. It follows the [LLM Wiki](h
 
 Pages are indexed per `##`/`###` section with SQLite FTS5 BM25. With a Jev key, `recall` sends the top 40 matching sections to [Jev](https://vercel.com/ai-gateway/models/jev), which scores how likely each is to help, and drops the unlikely ones, as in [jevgrep](https://github.com/dzhng/jevgrep). If Jev fails, results fall back to BM25 order.
 
-## Tokens compared with a file wiki
+## Fewer tokens than a file wiki
 
-In a file-based LLM Wiki, an agent reads the wiki's schema file and `index.md`, the catalog of every page, then opens the pages it needs. Pensieve's MCP instructions carry a generated map of memory instead, and `recall` returns only the matching sections, within a token budget.
+![Tokens an agent reads from memory, on about 300 pages: session start 1,415 with Pensieve versus 12,436 for a file wiki (89% fewer); first question 3,341 versus 14,657 (77% fewer); a 20-question session 36,134 versus 61,823 (42% fewer).](docs/tokens.svg)
 
-[`scripts/token-bench.py`](scripts/token-bench.py) measured both on the maintainer's own memory, about 300 pages, as a file wiki and after importing it into Pensieve. Its 20 everyday questions were written from the wiki's index, each with the page that answers it, and the file wiki gets the best case: it opens exactly that page and nothing else. Tokens are counted with `o200k_base`, and `recall` used its default 2,000-token budget with Jev reranking. Jev's ranking moves Pensieve's figures by a few percent between runs, so each is the middle of three.
+A file-based LLM Wiki has the agent read `index.md`, the catalog of every page, before it can open anything. Pensieve instead sends a map of memory that stays the same size, and `recall` returns only the sections that match. On the maintainer's own memory, about 300 pages:
 
-| | Pensieve | File wiki, best case |
-|---|---:|---:|
-| Session start: MCP instructions and tool definitions, or `AGENTS.md` and `index.md` | 1,415 | 12,436 |
-| Each question, median: `recall`, or the page that answers it | 1,926 | 2,221 |
-| First question of a session | 3,341 | 14,657 (4.4×) |
-| One session asking all 20 | 36,134 | 61,823 (1.7×) |
+- **89% fewer tokens at session start:** 1,415 instead of 12,436.
+- **77% fewer to answer the first question:** 3,341 instead of 14,657, about 11,300 tokens saved in every session that consults memory.
+- **42% fewer across a session of 20 questions:** 36,134 instead of 61,823, a saving of 25,689 tokens.
 
-Most of the difference is `index.md`: the file wiki reads it in every session, and it gains a line with every page, while Pensieve's map stays the same size. Per question the two are close, and the file wiki's figure assumes it never opens a wrong page. `recall` included the page that answers the question for 19 of the 20; that measures retrieval, not whether the answer was right. The gist suggests a search engine such as [qmd](https://github.com/tobi/qmd) once a wiki outgrows its index, which narrows the gap. To check with your own memory, run the script against your server with your own questions.
+**The gap grows with memory.** Every page adds a line to `index.md`, about 37 tokens, and the file wiki reads the whole index in every session. At that rate a 1,000-page wiki spends about 37,000 tokens on its index before the first question, and a 3,000-page wiki about 112,000, more than half of a 200,000-token context window. Pensieve's map lists page counts and the most linked and most recent pages, so it stays about 1,400 tokens however large memory grows.
+
+**The file wiki is shown at its best.** For each question it opens exactly the page with the answer, in full, and nothing else; an agent that opens a wrong page, or a second one, reads more. Pensieve's figures are what `recall` actually returned. Per question the two are close (a median of 1,926 tokens against 2,221), so almost all of the saving comes from not reading the index.
+
+<details>
+<summary>How it was measured</summary>
+
+[`scripts/token-bench.py`](scripts/token-bench.py) ran 20 everyday questions against the maintainer's memory, both as the original file wiki and after importing it into Pensieve. The questions were written from the wiki's index, each with the page that answers it. Tokens are counted with `o200k_base`, and `recall` used its default 2,000-token budget with Jev reranking. Jev's ranking moves Pensieve's figures by a few percent between runs, so each is the middle of three. Pensieve's session start includes its MCP instructions and tool definitions; the file wiki's is its `AGENTS.md` and `index.md`.
+
+`recall` returned the page with the answer for 19 of the 20 questions. That measures retrieval, not whether the final answer was right, and when `recall` misses, the agent has to search again. The gist suggests adding a search engine such as [qmd](https://github.com/tobi/qmd) once a wiki outgrows its index, which would narrow the gap. To measure your own memory, run the script against your server with your own questions and pages:
+
+```sh
+PENSIEVE_TOKEN=... scripts/token-bench.py --url https://my-server.tailnet.ts.net --wiki ~/wiki --questions questions.json
+```
+
+</details>
 
 ## Server
 
