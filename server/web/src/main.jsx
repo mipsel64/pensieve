@@ -1,6 +1,6 @@
 import { lazy, StrictMode, Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { Activity as ActivityIcon, History, LayoutDashboard, LogOut, Network, Search as SearchIcon, Settings as SettingsIcon } from 'lucide-react';
+import { Activity as ActivityIcon, History, LayoutDashboard, LogOut, Network, NotebookPen, Search as SearchIcon, Settings as SettingsIcon } from 'lucide-react';
 import '@fontsource-variable/ibm-plex-sans/wght.css';
 import '@fontsource-variable/jetbrains-mono/wght.css';
 import './style.css';
@@ -10,6 +10,7 @@ import { AuthContext, Empty, ErrorNote, Loading, Logo } from './ui.jsx';
 import { Login } from './Login.jsx';
 import { Dashboard } from './Dashboard.jsx';
 import { Timeline } from './Timeline.jsx';
+import { Journal } from './Journal.jsx';
 import { Activity } from './Activity.jsx';
 import { Search } from './Search.jsx';
 import { PageDrawer, PageView } from './Page.jsx';
@@ -24,6 +25,7 @@ const NAV = [
   ['dashboard', 'Dashboard', LayoutDashboard],
   ['graph', 'Graph', Network],
   ['timeline', 'Timeline', History],
+  ['journal', 'Journal', NotebookPen],
   ['activity', 'Activity', ActivityIcon],
 ];
 const LABELS = { ...Object.fromEntries(NAV.map(([id, label]) => [id, label])), settings: 'Settings', page: 'Page' };
@@ -99,6 +101,7 @@ function Shell({ onSignOut }) {
     dashboard: <Dashboard />,
     graph: <GraphView params={params} />,
     timeline: <Timeline params={params} />,
+    journal: <Journal params={params} />,
     activity: <Activity />,
     search: <Search params={params} />,
     settings: <Settings onSignOut={signOut} />,

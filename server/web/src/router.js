@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useState } from 'react';
 import { query } from './api.js';
 
-export const VIEWS = ['search', 'dashboard', 'graph', 'timeline', 'activity', 'settings', 'page'];
+export const VIEWS = ['search', 'dashboard', 'graph', 'timeline', 'journal', 'activity', 'settings', 'page'];
 
 // Routes live in the hash, e.g. #/timeline?author=x&page=Redis, so every view and open page can be linked.
 export function parseHash(hash = location.hash) {
