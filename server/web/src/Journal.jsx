@@ -3,8 +3,7 @@ import { query } from './api.js';
 import { href } from './router.js';
 import { Empty, ErrorNote, Loading, Markdown, PageLink, RelTime, splitFrontmatter, useResource } from './ui.jsx';
 import { withoutTitle } from './Page.jsx';
-
-const DAY = /^Journal (\d{4}-\d{2}-\d{2})$/;
+import { JOURNAL_DAY, isDailyJournal } from './journal.js';
 // Titles carry the writer's local date; reading it as UTC midnight keeps the day from shifting.
 const dayFormat = new Intl.DateTimeFormat(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', timeZone: 'UTC' });
 // `day` comes from the URL: an invalid date throws, and Date rolls 2026-02-30 over into March.
@@ -19,7 +18,7 @@ export function Journal({ params }) {
   const days = useMemo(
     () =>
       (list.data?.hits ?? [])
-        .map((h) => DAY.exec(h.title)?.[1])
+        .map((h) => JOURNAL_DAY.exec(h.title)?.[1])
         .filter(Boolean)
         .sort()
         .reverse(),
@@ -89,12 +88,12 @@ function Day({ day }) {
           </div>
         )}
       </header>
-      <PageBody resource={entry} className="prose page-prose" empty="No journal for this day." />
+      <PageBody resource={entry} className="prose page-prose" empty="No journal for this day." newestFirst={isDailyJournal(entry.data)} />
     </>
   );
 }
 
-function PageBody({ resource, className, empty }) {
+function PageBody({ resource, className, empty, newestFirst = false }) {
   if (resource.loading) return <Loading />;
   if (resource.error) {
     return /cannot find page/i.test(resource.error.message) ? <Empty>{empty}</Empty> : <ErrorNote error={resource.error} onRetry={resource.reload} />;
@@ -104,7 +103,7 @@ function PageBody({ resource, className, empty }) {
   const missing = new Set(links.filter((l) => !l.exists).map((l) => l.title.toLowerCase()));
   return (
     <div className={className}>
-      <Markdown missing={missing}>{withoutTitle(splitFrontmatter(content)[1], title)}</Markdown>
+      <Markdown missing={missing} newestFirst={newestFirst}>{withoutTitle(splitFrontmatter(content)[1], title)}</Markdown>
     </div>
   );
 }
