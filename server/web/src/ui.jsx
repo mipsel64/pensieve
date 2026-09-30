@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import { remarkNewestFirst } from './journal.js';
 import { AlertTriangle, Loader2 } from 'lucide-react';
 import { api, Unauthorized } from './api.js';
 import { RouteContext, usePageHref } from './router.js';
@@ -186,10 +187,10 @@ function remarkWikilinks() {
 }
 
 /** Page Markdown with GFM and working [[links]]; raw HTML is not rendered. `missing` holds lowercased targets. */
-export function Markdown({ children, missing = new Set() }) {
+export function Markdown({ children, missing = new Set(), newestFirst = false }) {
   return (
     <ReactMarkdown
-      remarkPlugins={[remarkGfm, remarkWikilinks]}
+      remarkPlugins={[remarkGfm, remarkWikilinks, ...(newestFirst ? [remarkNewestFirst] : [])]}
       components={{
         a({ href = '', children }) {
           const title = href.startsWith('#wiki/') ? safeDecode(href.slice(6)) : null;

@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { History, Maximize2, Network, X } from 'lucide-react';
 import { query } from './api.js';
 import { href } from './router.js';
+import { isDailyJournal } from './journal.js';
 import { Empty, ErrorNote, Loading, Markdown, PageLink, RelTime, splitFrontmatter, TypeBadge, useResource } from './ui.jsx';
 
 function usePage(title) {
@@ -161,7 +162,9 @@ export function PageDrawer({ title, closeHref }) {
             <PageActions data={p.data} />
             <Properties fields={p.fields} missing={p.missing} />
             <article className="prose">
-              <Markdown missing={p.missing}>{p.body}</Markdown>
+              <Markdown missing={p.missing} newestFirst={isDailyJournal(p.data)}>
+                {p.body}
+              </Markdown>
             </article>
             <LinkLists data={p.data} />
             <RecentChanges changes={p.changes} />
@@ -196,7 +199,9 @@ export function PageView({ title }) {
           <>
             <Properties fields={p.fields} missing={p.missing} />
             <div className="prose page-prose">
-              <Markdown missing={p.missing}>{p.body}</Markdown>
+              <Markdown missing={p.missing} newestFirst={isDailyJournal(p.data)}>
+                {p.body}
+              </Markdown>
             </div>
           </>
         )}
