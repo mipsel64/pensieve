@@ -5,6 +5,8 @@ pub(crate) mod conformance;
 
 pub use sqlite::SqliteStorage;
 
+use std::time::SystemTime;
+
 use async_trait::async_trait;
 use serde::Serialize;
 
@@ -30,11 +32,12 @@ pub trait Storage: Send + Sync {
     async fn search(&self, query: &str, kind: Option<&str>, limit: usize) -> Result<Vec<Hit>>;
 
     /// Sections matching any of `terms`, best first. Multi-word terms match as phrases.
-    /// Without a type, journals are excluded.
+    /// Without a type, journals are excluded unless updated at or after `recent_journals_since`.
     async fn search_sections(
         &self,
         terms: &[String],
         kind: Option<&str>,
+        recent_journals_since: SystemTime,
         limit: usize,
     ) -> Result<Vec<Passage>>;
 

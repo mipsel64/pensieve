@@ -415,10 +415,15 @@ mod tests {
             }]
             .as_array()
             .unwrap();
-            assert!(
-                entries.iter().all(|entry| entry["title"] == "Redis") && !entries.is_empty(),
-                "{path}: {response}"
-            );
+            let mut titles: Vec<_> = entries.iter().filter_map(|e| e["title"].as_str()).collect();
+            titles.sort_unstable();
+            titles.dedup();
+            let expected: &[&str] = if path.starts_with("/search") {
+                &["Redis"]
+            } else {
+                &["Redis", "Scratchpad"]
+            };
+            assert_eq!(titles, expected, "{path}: {response}");
             assert!(
                 response["leads"]
                     .as_array()

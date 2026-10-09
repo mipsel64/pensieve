@@ -137,7 +137,7 @@ Tools:
 
 | Tool | |
 |---|---|
-| `recall` | The passages most relevant to a question, ranked, within a token budget (default 2,000). The agent adds keywords (synonyms, identifiers, likely titles) to catch notes that use different words. Lists related pages that didn't fit. Skips journals unless `type: "journal"` is passed; `type` can select any one page type. |
+| `recall` | The passages most relevant to a question, ranked, within a token budget (default 2,000). The agent adds keywords (synonyms, identifiers, likely titles) to catch notes that use different words. Lists related pages that didn't fit. Skips journals not updated in the last 7 days unless `type: "journal"` is passed; `type` can select any one page type. |
 | `search` | Keyword (BM25) search returning page titles and snippets; an empty query lists recent pages. Skips journals unless `type: "journal"` is passed; `type` can select any one page type. |
 | `read` | A page or one section, with its type, rev, section list, links and backlinks. |
 | `write` | Create or replace a page. Needs a one-line `summary`, and `base_rev` when replacing, so a stale write from one device can't overwrite a newer change from another. |
