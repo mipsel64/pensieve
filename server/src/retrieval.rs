@@ -1,4 +1,7 @@
-use std::collections::HashMap;
+use std::{
+    collections::HashMap,
+    time::{Duration, SystemTime},
+};
 
 use crate::{
     error::Result,
@@ -11,6 +14,8 @@ const CANDIDATES: usize = 40;
 /// Passages per page in one recall, so one long page can't crowd out the others.
 const PER_PAGE: usize = 3;
 const MAX_LEADS: usize = 8;
+/// Journals updated within this window are recalled without a type; older ones need `type: "journal"`.
+const RECENT_JOURNALS: Duration = Duration::from_secs(7 * 24 * 60 * 60);
 /// Bytes per section sent to the reranker; covers all but the longest sections, and the reranker
 /// splits batches to fit its request limit.
 const EXCERPT_BYTES: usize = 6000;
@@ -122,7 +127,10 @@ pub async fn recall(
             .filter(|w| !w.is_empty() && !STOPWORDS.contains(&w.to_lowercase().as_str()))
             .map(str::to_owned),
     );
-    let matches = storage.search_sections(&terms, kind, CANDIDATES).await?;
+    let recent_journals_since = SystemTime::now() - RECENT_JOURNALS;
+    let matches = storage
+        .search_sections(&terms, kind, recent_journals_since, CANDIDATES)
+        .await?;
 
     let mut ranked = matches.clone();
     let mut reranked = false;

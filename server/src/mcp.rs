@@ -37,8 +37,8 @@ near-duplicate. One page per concept, entity or source, titled by its subject.
 Types: topic (a concept or how something works), entity (a specific system, project, tool, person or \
 organization), source (summary of an external document), synthesis (analysis, plan or comparison), runbook \
 (a procedure), incident (something that went wrong at a point in time), audit (review findings), journal \
-(short-term session notes: daily Journal YYYY-MM-DD pages and the Scratchpad; recall and search skip them \
-unless you pass type \"journal\"). Pensieve tracks timestamps, backlinks and history itself.
+(short-term session notes: daily Journal YYYY-MM-DD pages and the Scratchpad; search skips them, and recall \
+skips those not updated in the last 7 days, unless you pass type \"journal\"). Pensieve tracks timestamps, backlinks and history itself.
 - Link related pages with [[Page Title]] and attribute claims: (source: [[Page]]) or a URL.
 - If new information contradicts a page, record both claims with their sources instead of silently replacing \
 the old one.
@@ -534,15 +534,15 @@ fn tools() -> Value {
             "name": "recall",
             "description": "Retrieve the passages of memory most relevant to a question, ranked, within a token budget. \
                 Use before answering from memory and before writing. Add keywords (synonyms, identifiers, likely \
-                page titles) to catch notes that use different words. Omit type to skip journals; \
-                pass type to search only that type.",
+                page titles) to catch notes that use different words. Omit type to skip journals not updated in the \
+                last 7 days; pass type to search only that type.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
                     "question": { "type": "string", "description": "What you need to know, as a natural-language question." },
                     "keywords": { "type": ["array", "null"], "items": { "type": "string" }, "description": "3-8 extra search terms; multi-word terms match as phrases." },
                     "budget": { "type": ["integer", "null"], "minimum": 200, "maximum": MAX_BUDGET, "default": DEFAULT_BUDGET, "description": "Approximate tokens of passages to return." },
-                    "type": { "type": ["string", "null"], "description": "Only this page type; journals are skipped by default." }
+                    "type": { "type": ["string", "null"], "description": "Only this page type; journals not updated in the last 7 days are skipped by default." }
                 },
                 "required": ["question"]
             },
@@ -799,7 +799,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn journals_are_opt_in_for_tools_and_instructions() {
+    async fn journal_scope_for_tools_and_instructions() {
         let storage = Arc::new(SqliteStorage::open(Path::new(":memory:")).unwrap());
         let app = App {
             storage,
@@ -823,21 +823,17 @@ mod tests {
             "{text}"
         );
 
+        let (text, error) = tool(&app, "search", json!({ "query": "cache" })).await;
+        assert!(
+            !error && text.contains("Redis") && !text.contains("- Scratchpad ("),
+            "{text}"
+        );
+        let (text, error) = tool(&app, "recall", json!({ "question": "cache" })).await;
+        assert!(
+            !error && text.contains("## Redis\n") && text.contains("## Scratchpad\n"),
+            "{text}"
+        );
         for name in ["search", "recall"] {
-            let args = if name == "search" {
-                json!({ "query": "cache" })
-            } else {
-                json!({ "question": "cache" })
-            };
-            let (text, error) = tool(&app, name, args).await;
-            assert!(
-                !error
-                    && text.contains("Redis")
-                    && !text.contains("- Scratchpad (")
-                    && !text.contains("## Scratchpad\n")
-                    && !text.contains("More pages: Scratchpad"),
-                "{name}: {text}"
-            );
             let args = if name == "search" {
                 json!({ "query": "cache", "type": "journal" })
             } else {
@@ -875,11 +871,13 @@ mod tests {
                 && !instructions.contains("Recently written: Scratchpad"),
             "{instructions}"
         );
+        let (text, error) = tool(&app, "write", json!({ "title": "Quiet Journal", "content": "---\ntype: journal\n---\nNothing relevant.", "summary": "Add journal" })).await;
+        assert!(!error, "{text}");
         app.storage
             .edit(
                 "Redis",
                 "Scratchpad holds notes.",
-                "Scratchpad holds notes. [[Scratchpad]]",
+                "Scratchpad holds notes. [[Quiet Journal]]",
                 Change {
                     author: "t",
                     summary: None,
@@ -888,7 +886,10 @@ mod tests {
             .await
             .unwrap();
         let (text, error) = tool(&app, "recall", json!({ "question": "cache" })).await;
-        assert!(!error && !text.contains("More pages: Scratchpad"), "{text}");
+        assert!(
+            !error && !text.contains("More pages: Quiet Journal"),
+            "{text}"
+        );
     }
 
     #[tokio::test]

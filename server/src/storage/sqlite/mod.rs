@@ -2,7 +2,7 @@ use std::{
     collections::BTreeMap,
     path::Path,
     sync::{Arc, Mutex, PoisonError},
-    time::Duration,
+    time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
 use async_trait::async_trait;
@@ -81,12 +81,15 @@ impl Storage for SqliteStorage {
         &self,
         terms: &[String],
         kind: Option<&str>,
+        recent_journals_since: SystemTime,
         limit: usize,
     ) -> Result<Vec<Passage>> {
         let terms = terms.to_vec();
         let kind = kind.map(str::to_owned);
-        self.run(move |conn| search_sections(conn, &terms, kind.as_deref(), limit))
-            .await
+        self.run(move |conn| {
+            search_sections(conn, &terms, kind.as_deref(), recent_journals_since, limit)
+        })
+        .await
     }
 
     async fn visit(&self, title: &str) -> Result<()> {
@@ -315,21 +318,30 @@ fn search_sections(
     conn: &Connection,
     terms: &[String],
     kind: Option<&str>,
+    recent_journals_since: SystemTime,
     limit: usize,
 ) -> Result<Vec<Passage>> {
     let Some(query) = fts_query(terms) else {
         return Ok(Vec::new());
     };
     let limit = i64::try_from(limit).unwrap_or(i64::MAX);
+    let since = recent_journals_since
+        .duration_since(UNIX_EPOCH)
+        .map_or(0, |d| {
+            // Stored times have whole seconds, so round a fractional cutoff up to keep "at or after" exact.
+            i64::try_from(d.as_secs() + u64::from(d.subsec_nanos() > 0)).unwrap_or(i64::MAX)
+        });
     conn.prepare_cached(
         "SELECT p.title, s.heading, s.ord, s.body, p.rev, p.updated_at, p.type, p.confidence,
                 -bm25(sections_fts, 5.0, 3.0, 1.0)
          FROM sections_fts JOIN sections s ON s.id = sections_fts.rowid JOIN pages p ON p.id = s.page
          WHERE sections_fts MATCH ?1 AND
-               ((?3 IS NULL AND (p.type IS NULL OR p.type != 'journal')) OR p.type = ?3)
+               ((?3 IS NULL AND (p.type IS NULL OR p.type != 'journal'
+                                 OR p.updated_at >= strftime('%Y-%m-%dT%H:%M:%SZ', ?4, 'unixepoch')))
+                OR p.type = ?3)
          ORDER BY 9 DESC LIMIT ?2",
     )?
-    .query_map(params![query, limit, kind], |r| {
+    .query_map(params![query, limit, kind, since], |r| {
         Ok(Passage {
             title: r.get(0)?,
             heading: r.get(1)?,
@@ -558,6 +570,7 @@ fn fts_query(terms: &[String]) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::storage::Change;
 
     #[test]
     fn fts_query_is_bounded() {
@@ -566,6 +579,45 @@ mod tests {
         assert_eq!(query.matches(" OR ").count(), MAX_PHRASES - 1);
         let long = fts_query(&[many.join(" ")]).unwrap();
         assert_eq!(long.split(' ').count(), MAX_PHRASE_WORDS);
+    }
+
+    #[tokio::test]
+    async fn recall_includes_only_journals_updated_within_a_week() {
+        let storage = SqliteStorage::open(Path::new(":memory:")).unwrap();
+        for title in ["Journal six days", "Journal eight days"] {
+            let content = format!("---\ntype: journal\n---\nCache notes for {title}.");
+            storage
+                .put(
+                    title,
+                    &content,
+                    None,
+                    Change {
+                        author: "t",
+                        summary: None,
+                    },
+                )
+                .await
+                .unwrap();
+        }
+        for (title, age) in [
+            ("Journal six days", "-6 days"),
+            ("Journal eight days", "-8 days"),
+        ] {
+            storage
+                .conn
+                .lock()
+                .unwrap()
+                .execute(
+                    "UPDATE pages SET updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now', ?2) WHERE title = ?1",
+                    [title, age],
+                )
+                .unwrap();
+        }
+        let recalled = crate::retrieval::recall(&storage, None, "cache", &[], None, 2000)
+            .await
+            .unwrap();
+        let titles: Vec<_> = recalled.passages.iter().map(|p| p.title.as_str()).collect();
+        assert_eq!(titles, ["Journal six days"]);
     }
 
     #[tokio::test]

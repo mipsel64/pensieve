@@ -376,7 +376,7 @@ mod tests {
     use crate::storage::SqliteStorage;
 
     #[tokio::test]
-    async fn journal_retrieval_requires_type() {
+    async fn old_journals_require_type() {
         let token = "test-token-0123456789";
         let storage = Arc::new(SqliteStorage::open(Path::new(":memory:")).unwrap());
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -415,10 +415,15 @@ mod tests {
             }]
             .as_array()
             .unwrap();
-            assert!(
-                entries.iter().all(|entry| entry["title"] == "Redis") && !entries.is_empty(),
-                "{path}: {response}"
-            );
+            let mut titles: Vec<_> = entries.iter().filter_map(|e| e["title"].as_str()).collect();
+            titles.sort_unstable();
+            titles.dedup();
+            let expected: &[&str] = if path.starts_with("/search") {
+                &["Redis"]
+            } else {
+                &["Redis", "Scratchpad"]
+            };
+            assert_eq!(titles, expected, "{path}: {response}");
             assert!(
                 response["leads"]
                     .as_array()

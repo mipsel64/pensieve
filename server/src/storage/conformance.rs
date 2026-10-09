@@ -1,3 +1,5 @@
+use std::time::{Duration, SystemTime};
+
 use super::{Change, HistoryFilter, Link, Storage};
 use crate::error::Error;
 
@@ -8,6 +10,8 @@ const T: Change = Change {
 
 /// Behaviour every `Storage` backend must have. Starts from an empty store.
 pub(crate) async fn check(storage: &dyn Storage) {
+    let week_ago = SystemTime::now() - Duration::from_secs(7 * 24 * 60 * 60);
+    let tomorrow = SystemTime::now() + Duration::from_secs(24 * 60 * 60);
     let redis = "---\ntype: topic\nconfidence: high\n---\nRedis is a cache. See [[ClickHouse|CH]], [[Missing Page#x]] and [[missing page]].\n\
                  ```sh\n[[ -f x ]]\n```\n\n## Eviction\nLRU policies drop keys.\n";
     let first = Change {
@@ -124,7 +128,7 @@ pub(crate) async fn check(storage: &dyn Storage) {
     assert_eq!(storage.search("", None, 1).await.unwrap()[0].title, "Redis");
 
     let passages = storage
-        .search_sections(&["volatile lru".into(), "zzz".into()], None, 5)
+        .search_sections(&["volatile lru".into(), "zzz".into()], None, week_ago, 5)
         .await
         .unwrap();
     assert_eq!(
@@ -135,7 +139,7 @@ pub(crate) async fn check(storage: &dyn Storage) {
     assert_eq!(passages[0].kind.as_deref(), Some("topic"));
     assert!(
         storage
-            .search_sections(&["\"(".into()], None, 5)
+            .search_sections(&["\"(".into()], None, week_ago, 5)
             .await
             .unwrap()
             .is_empty()
@@ -231,17 +235,26 @@ pub(crate) async fn check(storage: &dyn Storage) {
             .unwrap()
             .is_empty()
     );
-    assert_eq!(
-        storage
-            .search_sections(&["volatile lru".into()], None, 1)
-            .await
-            .unwrap()[0]
-            .title,
-        "Redis"
+    let old = storage
+        .search_sections(&["volatile lru".into()], None, tomorrow, 5)
+        .await
+        .unwrap();
+    assert!(old.iter().any(|p| p.title == "Redis"));
+    assert!(
+        old.iter().all(|p| p.title != "Scratchpad"),
+        "journal older than the cutoff is skipped"
+    );
+    let recent = storage
+        .search_sections(&["volatile lru".into()], None, week_ago, 5)
+        .await
+        .unwrap();
+    assert!(
+        recent.iter().any(|p| p.title == "Scratchpad"),
+        "journal newer than the cutoff is recalled"
     );
     assert_eq!(
         storage
-            .search_sections(&["volatile lru".into()], Some("journal"), 1)
+            .search_sections(&["volatile lru".into()], Some("journal"), tomorrow, 1)
             .await
             .unwrap()[0]
             .title,
@@ -249,7 +262,7 @@ pub(crate) async fn check(storage: &dyn Storage) {
     );
     assert!(
         storage
-            .search_sections(&["volatile lru".into()], Some("runbook"), 5)
+            .search_sections(&["volatile lru".into()], Some("runbook"), week_ago, 5)
             .await
             .unwrap()
             .is_empty()
