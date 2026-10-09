@@ -799,7 +799,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn journals_are_opt_in_for_tools_and_instructions() {
+    async fn journal_scope_for_tools_and_instructions() {
         let storage = Arc::new(SqliteStorage::open(Path::new(":memory:")).unwrap());
         let app = App {
             storage,
@@ -871,11 +871,13 @@ mod tests {
                 && !instructions.contains("Recently written: Scratchpad"),
             "{instructions}"
         );
+        let (text, error) = tool(&app, "write", json!({ "title": "Quiet Journal", "content": "---\ntype: journal\n---\nNothing relevant.", "summary": "Add journal" })).await;
+        assert!(!error, "{text}");
         app.storage
             .edit(
                 "Redis",
                 "Scratchpad holds notes.",
-                "Scratchpad holds notes. [[Scratchpad]]",
+                "Scratchpad holds notes. [[Quiet Journal]]",
                 Change {
                     author: "t",
                     summary: None,
@@ -884,7 +886,10 @@ mod tests {
             .await
             .unwrap();
         let (text, error) = tool(&app, "recall", json!({ "question": "cache" })).await;
-        assert!(!error && !text.contains("More pages: Scratchpad"), "{text}");
+        assert!(
+            !error && !text.contains("More pages: Quiet Journal"),
+            "{text}"
+        );
     }
 
     #[tokio::test]

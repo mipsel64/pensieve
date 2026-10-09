@@ -235,13 +235,13 @@ pub(crate) async fn check(storage: &dyn Storage) {
             .unwrap()
             .is_empty()
     );
-    assert_eq!(
-        storage
-            .search_sections(&["volatile lru".into()], None, tomorrow, 1)
-            .await
-            .unwrap()[0]
-            .title,
-        "Redis",
+    let old = storage
+        .search_sections(&["volatile lru".into()], None, tomorrow, 5)
+        .await
+        .unwrap();
+    assert!(old.iter().any(|p| p.title == "Redis"));
+    assert!(
+        old.iter().all(|p| p.title != "Scratchpad"),
         "journal older than the cutoff is skipped"
     );
     let recent = storage

@@ -584,7 +584,7 @@ mod tests {
     #[tokio::test]
     async fn recall_includes_only_journals_updated_within_a_week() {
         let storage = SqliteStorage::open(Path::new(":memory:")).unwrap();
-        for title in ["Journal 2000-01-01", "Journal today"] {
+        for title in ["Journal six days", "Journal eight days"] {
             let content = format!("---\ntype: journal\n---\nCache notes for {title}.");
             storage
                 .put(
@@ -599,20 +599,25 @@ mod tests {
                 .await
                 .unwrap();
         }
-        storage
-            .conn
-            .lock()
-            .unwrap()
-            .execute(
-                "UPDATE pages SET updated_at = '2000-01-01T00:00:00Z' WHERE title = 'Journal 2000-01-01'",
-                [],
-            )
-            .unwrap();
+        for (title, age) in [
+            ("Journal six days", "-6 days"),
+            ("Journal eight days", "-8 days"),
+        ] {
+            storage
+                .conn
+                .lock()
+                .unwrap()
+                .execute(
+                    "UPDATE pages SET updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now', ?2) WHERE title = ?1",
+                    [title, age],
+                )
+                .unwrap();
+        }
         let recalled = crate::retrieval::recall(&storage, None, "cache", &[], None, 2000)
             .await
             .unwrap();
         let titles: Vec<_> = recalled.passages.iter().map(|p| p.title.as_str()).collect();
-        assert_eq!(titles, ["Journal today"]);
+        assert_eq!(titles, ["Journal six days"]);
     }
 
     #[tokio::test]

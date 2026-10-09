@@ -376,7 +376,7 @@ mod tests {
     use crate::storage::SqliteStorage;
 
     #[tokio::test]
-    async fn journal_retrieval_requires_type() {
+    async fn old_journals_require_type() {
         let token = "test-token-0123456789";
         let storage = Arc::new(SqliteStorage::open(Path::new(":memory:")).unwrap());
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
