@@ -128,6 +128,7 @@ function Results({ q, mode, rerank, params }) {
   // Results remember what they answer: for one render after a change, the previous results are still here.
   const key = `${mode}\n${rerank}\n${q}`;
   const [result, setResult] = useState({ loading: false, error: null, data: null, key: null });
+  const [attempt, setAttempt] = useState(0);
   const valid = searchable(q);
 
   useEffect(() => {
@@ -146,14 +147,14 @@ function Results({ q, mode, rerank, params }) {
     return () => {
       current = false;
     };
-  }, [q, mode, rerank, key, valid, lock]);
+  }, [q, mode, rerank, key, valid, lock, attempt]);
 
   if (!valid) return <p className="thread-note">Type a word or a name to search for.</p>;
   const fresh = result.key === key && !result.loading;
   return (
     <div className="thread-results" aria-busy={result.loading}>
       {result.loading && <Skeleton mode={mode} />}
-      {result.error && fresh && <ErrorNote error={result.error} />}
+      {result.error && fresh && <ErrorNote error={result.error} onRetry={() => setAttempt((n) => n + 1)} />}
       {result.data && fresh && (mode === 'ask' ? <Answer data={result.data} took={result.seconds} /> : <Hits data={result.data} took={result.seconds} q={q} params={params} />)}
     </div>
   );

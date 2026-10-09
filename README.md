@@ -1,3 +1,10 @@
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/banner-dark.svg">
+    <img src="docs/banner-light.svg" alt="Pensieve: persistent memory for agents, shared across devices." width="100%">
+  </picture>
+</p>
+
 # Pensieve
 
 ![Claude Code, Codex and Pi connect over MCP to a Pensieve server, which keeps pages, links, a section index and the journal in one SQLite file; a read-only web UI shows search, the graph, the timeline and the journal.](docs/pensieve.svg)
@@ -69,7 +76,7 @@ New backends implement `storage::Storage` and must pass `storage::conformance::c
 
 ## Web UI
 
-Open the server's URL and sign in with the server token. The UI opens on search (an answer built from the passages `recall` gives an agent, or pages ranked by keyword), and has a dashboard, the link graph, a timeline of writes, the journal (each day's session summaries beside the `Scratchpad`, read-only like the rest of the UI), activity by day, agent and type, and settings. Pages open in a side panel or as a full page, and every view has its own link. Press `/` to search.
+Open the server's URL and sign in with the server token. The UI opens on search (an answer built from the passages `recall` gives an agent, or pages ranked by keyword), and has a dashboard, the link graph, a timeline of writes, the journal (each day's session summaries beside the `Scratchpad`, read-only like the rest of the UI), activity by day, agent and type, and settings. Pages open in a side panel or as a full page, and every view has its own link. Press `/` to search. Appearance (System, Light or Dark) is saved per browser, `Cmd`/`Ctrl`+`K` opens the command palette, and `?` lists the keyboard shortcuts.
 
 Signing in sets a signed session cookie that lasts 30 days and can only read: writes still need the bearer token, so no web page can change memory through the browser. Signing out clears the cookie in that browser; rotating `server.token` ends every session. The one exception is `PUT /api/settings`: UI settings (accent, search defaults, graph filters and forces) are a JSON object of at most 16 KiB stored in the database, so every browser shares them, and a signed-in browser can save them. Tailscale Serve sends `X-Forwarded-Proto: https`, which marks the cookie `Secure`; other HTTPS proxies must send it too.
 

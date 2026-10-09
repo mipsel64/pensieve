@@ -1,8 +1,8 @@
 import { useContext, useEffect, useRef, useState } from 'react';
-import { History, Loader2, X } from 'lucide-react';
+import { History, ScrollText, X } from 'lucide-react';
 import { api, query, Unauthorized } from './api.js';
 import { href } from './router.js';
-import { AuthContext, Empty, ErrorNote, formatNumber, PageLink, RelTime, useResource } from './ui.jsx';
+import { AuthContext, Empty, ErrorNote, formatNumber, Loading, PageLink, RelTime, useResource } from './ui.jsx';
 
 const PAGE = 50;
 const dayFormat = new Intl.DateTimeFormat(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
@@ -76,7 +76,11 @@ export function Timeline({ params }) {
       </div>
 
       {state.error && <ErrorNote error={state.error} onRetry={() => load(state.before)} />}
-      {!state.loading && !state.error && entries.length === 0 && <Empty>No writes match these filters.</Empty>}
+      {!state.loading && !state.error && entries.length === 0 && (
+        <Empty icon={ScrollText} title="No writes match" action={params.author || params.title ? { href: href('timeline'), label: 'Clear filters' } : undefined}>
+          {params.author || params.title ? 'Try other filters.' : 'Nothing has been written yet.'}
+        </Empty>
+      )}
 
       <div className="timeline">
         {groups.map((group) => (
@@ -108,12 +112,7 @@ export function Timeline({ params }) {
         ))}
       </div>
 
-      {state.loading && (
-        <div className="state" role="status">
-          <Loader2 className="spin" size={18} aria-hidden="true" />
-          Loading writes…
-        </div>
-      )}
+      {state.loading && <Loading label="Loading writes" variant={entries.length ? 'inline' : 'list'} />}
       {!state.loading && !state.done && entries.length > 0 && (
         <button type="button" className="ghost load-more" onClick={() => load(entries.at(-1).seq)}>
           <History size={16} aria-hidden="true" /> Older writes

@@ -2,16 +2,17 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { api, Unauthorized } from './api.js';
 import { AuthContext } from './ui.jsx';
 
+// Fill colors live in style.css as --accent-<id>, one per theme.
 export const ACCENTS = {
-  silver: { label: 'Silver', color: '#dfe5e4' },
-  seaglass: { label: 'Sea glass', color: '#9fd3ca' },
-  moonlight: { label: 'Moonlight', color: '#a9c1ea' },
-  lavender: { label: 'Lavender', color: '#c3b3ea' },
-  ember: { label: 'Ember', color: '#e6c28f' },
+  silver: { label: 'Silver' },
+  seaglass: { label: 'Sea glass' },
+  moonlight: { label: 'Moonlight' },
+  lavender: { label: 'Lavender' },
+  ember: { label: 'Ember' },
 };
 
 export const DEFAULT_SETTINGS = {
-  accent: 'silver',
+  accent: 'seaglass',
   search: { mode: 'ask', rerank: true },
   graph: {
     missing: false,
@@ -150,19 +151,15 @@ export function SettingsProvider({ initial, children }) {
     };
   }, [flush, put]);
 
-  const accent = accentColor(settings);
+  const accent = settings.accent;
   useEffect(() => {
-    const root = document.documentElement.style;
-    root.setProperty('--accent', accent);
-    return () => root.removeProperty('--accent');
+    const root = document.documentElement;
+    root.dataset.accent = accent;
+    return () => delete root.dataset.accent;
   }, [accent]);
 
   const value = useMemo(() => ({ settings, update, status, retry, flush }), [settings, update, status, retry, flush]);
   return <SettingsContext.Provider value={value}>{children}</SettingsContext.Provider>;
-}
-
-export function accentColor(settings) {
-  return ACCENTS[settings.accent].color;
 }
 
 export function Toggle({ id, label, checked, onChange }) {

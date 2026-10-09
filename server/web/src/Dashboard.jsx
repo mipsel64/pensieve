@@ -5,7 +5,7 @@ import { Card, Empty, ErrorNote, formatNumber, KIND_COLORS, Loading, PageLink, R
 export function Dashboard() {
   const stats = useStats();
   const recent = useResource('/history?limit=8');
-  if (stats.loading && !stats.data) return <Loading label="Loading memory" />;
+  if (stats.loading && !stats.data) return <Loading label="Loading memory" variant="cards" />;
   if (stats.error) return <ErrorNote error={stats.error} onRetry={stats.reload} />;
   const s = stats.data;
   const lastWrite = recent.data?.[0]?.at;

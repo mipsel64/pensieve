@@ -20,7 +20,7 @@ const dateFormat = new Intl.DateTimeFormat(undefined, {
 
 export function Activity() {
   const stats = useStats();
-  if (stats.loading && !stats.data) return <Loading label="Loading activity" />;
+  if (stats.loading && !stats.data) return <Loading label="Loading activity" variant="cards" />;
   if (stats.error) return <ErrorNote error={stats.error} onRetry={stats.reload} />;
   const s = stats.data;
 
