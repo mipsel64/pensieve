@@ -1,25 +1,17 @@
-import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { remarkNewestFirst } from './journal.js';
-import { AlertTriangle, Loader2 } from 'lucide-react';
+import { AlertTriangle, Link2, Loader2, RefreshCw } from 'lucide-react';
 import { api, Unauthorized } from './api.js';
 import { RouteContext, usePageHref } from './router.js';
+import { remarkHeadingIds } from './toc.js';
 
 export const KINDS = ['topic', 'entity', 'source', 'synthesis', 'runbook', 'incident', 'audit', 'journal'];
-// Muted like the mist, but far enough apart in hue to tell the types apart.
-export const KIND_COLORS = {
-  topic: '#8fb6dc',
-  entity: '#b3a4e0',
-  source: '#d9bd86',
-  synthesis: '#87cbbd',
-  runbook: '#a3c98f',
-  incident: '#df9696',
-  audit: '#d59fc2',
-  journal: '#b9aaa0',
-  untyped: '#8d9797',
-  missing: '#5c6868',
-};
+// Values are CSS variables, so they follow the theme; the canvas reads them with cssColor.
+const KIND_NAMES = [...KINDS, 'untyped', 'missing'];
+export const KIND_COLORS = Object.fromEntries(KIND_NAMES.map((name) => [name, `var(--kind-${name})`]));
+export const KIND_BACKGROUNDS = Object.fromEntries(KIND_NAMES.map((name) => [name, `var(--kind-${name}-bg)`]));
 
 export const AuthContext = createContext(() => {});
 
@@ -89,7 +81,7 @@ export const formatNumber = (n) => new Intl.NumberFormat().format(n);
 export function TypeBadge({ kind }) {
   const name = kind ?? 'untyped';
   return (
-    <span className="badge" style={{ '--kind': KIND_COLORS[name] ?? KIND_COLORS.untyped }}>
+    <span className="badge" style={{ '--kind': KIND_COLORS[name] ?? KIND_COLORS.untyped, '--kind-bg': KIND_BACKGROUNDS[name] ?? KIND_BACKGROUNDS.untyped }}>
       {name}
     </span>
   );
@@ -121,11 +113,71 @@ export function Card({ title, icon: Icon, action, className = '', children }) {
   );
 }
 
-export function Loading({ label = 'Loading' }) {
+const bar = (width, height) => ({ width, height });
+
+const ARTICLE_SKELETON = (
+  <>
+    <span className="skel-row">
+      <span className="skel pill" />
+      <span className="skel pill" />
+      <span className="skel pill" />
+    </span>
+    {['100%', '96%', '88%', '100%', '62%'].map((w, i) => (
+      <span key={i} className="skel" style={bar(w, 14)} />
+    ))}
+    <span className="skel" style={{ ...bar('38%', 20), marginTop: 12 }} />
+    {['100%', '92%', '70%'].map((w, i) => (
+      <span key={i} className="skel" style={bar(w, 14)} />
+    ))}
+  </>
+);
+
+const SKELETONS = {
+  // The page header already shows the title, so `article` leaves out the title bar.
+  article: ARTICLE_SKELETON,
+  page: (
+    <>
+      <span className="skel" style={bar('55%', 28)} />
+      {ARTICLE_SKELETON}
+    </>
+  ),
+  list: [0, 1, 2, 3, 4, 5].map((i) => (
+    <span key={i} className="skel-item">
+      <span className="skel dot" />
+      <span className="skel-stack">
+        <span className="skel" style={bar(`${70 - i * 6}%`, 14)} />
+        <span className="skel" style={bar('40%', 11)} />
+      </span>
+    </span>
+  )),
+  cards: (
+    <>
+      <span className="skel-grid">
+        {[0, 1, 2, 3].map((i) => (
+          <span key={i} className="skel" style={bar('100%', 84)} />
+        ))}
+      </span>
+      <span className="skel-grid two">
+        <span className="skel" style={bar('100%', 220)} />
+        <span className="skel" style={bar('100%', 220)} />
+      </span>
+    </>
+  ),
+};
+
+/** Shown while data loads. `variant` picks a placeholder shaped like the content; it appears after 150 ms so a fast load never flashes. */
+export function Loading({ label = 'Loading', variant = 'inline' }) {
+  if (variant === 'inline') {
+    return (
+      <div className="state" role="status">
+        <Loader2 className="spin" aria-hidden="true" size={18} />
+        {label}…
+      </div>
+    );
+  }
   return (
-    <div className="state" role="status">
-      <Loader2 className="spin" aria-hidden="true" size={18} />
-      {label}…
+    <div className={`skel-wrap skel-${variant}`} role="status" aria-busy="true" aria-label={label}>
+      {SKELETONS[variant]}
     </div>
   );
 }
@@ -135,18 +187,34 @@ export function ErrorNote({ error, onRetry }) {
   return (
     <div className="state error" role="alert">
       <AlertTriangle aria-hidden="true" size={18} />
-      <span>{error.message}</span>
+      <span className="state-text">
+        <strong>Something went wrong</strong>
+        <span>{error.message}</span>
+      </span>
       {onRetry && (
         <button type="button" className="ghost" onClick={onRetry}>
-          Retry
+          <RefreshCw size={14} aria-hidden="true" /> Retry
         </button>
       )}
     </div>
   );
 }
 
-export function Empty({ children }) {
-  return <p className="state muted">{children}</p>;
+/** Nothing to show. With a `title` it becomes a designed empty state: icon, title, hint (children) and one `action` `{ href, label }`. */
+export function Empty({ children, title, icon: Icon, action }) {
+  if (!title) return <p className="state muted">{children}</p>;
+  return (
+    <div className="empty">
+      {Icon && <Icon aria-hidden="true" size={22} />}
+      <p className="empty-title">{title}</p>
+      {children && <p className="empty-hint">{children}</p>}
+      {action && (
+        <a className="ghost" href={action.href}>
+          {action.label}
+        </a>
+      )}
+    </div>
+  );
 }
 
 /** Splits `[[Target#heading|alias]]` into its target page and display text. */
@@ -186,30 +254,58 @@ function remarkWikilinks() {
   return walk;
 }
 
-/** Page Markdown with GFM and working [[links]]; raw HTML is not rendered. `missing` holds lowercased targets. */
-export function Markdown({ children, missing = new Set(), newestFirst = false }) {
+const EMPTY_SET = new Set();
+
+function Heading({ level, id, onAnchor, children }) {
+  const Tag = `h${level}`;
   return (
-    <ReactMarkdown
-      remarkPlugins={[remarkGfm, remarkWikilinks, ...(newestFirst ? [remarkNewestFirst] : [])]}
-      components={{
-        a({ href = '', children }) {
-          const title = href.startsWith('#wiki/') ? safeDecode(href.slice(6)) : null;
-          if (title !== null) {
-            return (
-              <PageLink title={title} missing={missing.has(title.toLowerCase())}>
-                {children}
-              </PageLink>
-            );
-          }
-          const external = /^https?:/i.test(href);
+    <Tag id={id}>
+      {children}
+      {id && onAnchor && (
+        <button type="button" className="heading-anchor" aria-label="Copy link to section" title="Copy link to section" onClick={() => onAnchor(id)}>
+          <Link2 size={14} aria-hidden="true" />
+        </button>
+      )}
+    </Tag>
+  );
+}
+
+/**
+ * Page Markdown with GFM and working [[links]]; raw HTML is not rendered. `missing` holds lowercased targets.
+ * `onAnchor(id)` adds ids and a copy-link button to headings.
+ */
+export function Markdown({ children, missing = EMPTY_SET, newestFirst = false, onAnchor }) {
+  const components = useMemo(() => {
+    const heading = (level) =>
+      function MarkdownHeading({ id, children }) {
+        return (
+          <Heading level={level} id={id} onAnchor={onAnchor}>
+            {children}
+          </Heading>
+        );
+      };
+    return {
+      ...(onAnchor && { h1: heading(1), h2: heading(2), h3: heading(3), h4: heading(4) }),
+      a({ href = '', children }) {
+        const title = href.startsWith('#wiki/') ? safeDecode(href.slice(6)) : null;
+        if (title !== null) {
           return (
-            <a href={href} {...(external ? { target: '_blank', rel: 'noopener noreferrer' } : {})}>
+            <PageLink title={title} missing={missing.has(title.toLowerCase())}>
               {children}
-            </a>
+            </PageLink>
           );
-        },
-      }}
-    >
+        }
+        const external = /^https?:/i.test(href);
+        return (
+          <a href={href} {...(external ? { target: '_blank', rel: 'noopener noreferrer' } : {})}>
+            {children}
+          </a>
+        );
+      },
+    };
+  }, [missing, onAnchor]);
+  return (
+    <ReactMarkdown remarkPlugins={[remarkGfm, remarkWikilinks, ...(onAnchor ? [remarkHeadingIds] : []), ...(newestFirst ? [remarkNewestFirst] : [])]} components={components}>
       {children}
     </ReactMarkdown>
   );

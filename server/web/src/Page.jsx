@@ -1,8 +1,12 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { History, Maximize2, Network, X } from 'lucide-react';
+import { useCallback, useContext, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { FileQuestion, History, Link2, Maximize2, Network, X } from 'lucide-react';
 import { query } from './api.js';
-import { href } from './router.js';
+import { href, RouteContext } from './router.js';
 import { isDailyJournal } from './journal.js';
+import { Menu, MenuItem } from './Menu.jsx';
+import { ReadingProgress, scrollToHeading, TocMenu, TocSide, useActiveHeading, useHeadings } from './Toc.jsx';
+import { useCopy } from './Toast.jsx';
+import { readingMinutes } from './toc.js';
 import { Empty, ErrorNote, Loading, Markdown, PageLink, RelTime, splitFrontmatter, TypeBadge, useResource } from './ui.jsx';
 
 function usePage(title) {
@@ -17,6 +21,7 @@ function usePage(title) {
     data,
     fields: fields.filter(([key]) => !['type', 'confidence'].includes(key)),
     body: data ? withoutTitle(body, data.title) : '',
+    minutes: data ? readingMinutes(body) : 0,
     missing,
   };
 }
@@ -132,7 +137,7 @@ export function PageDrawer({ title, closeHref }) {
 
   useEffect(() => {
     heading.current?.focus();
-    const onKey = (e) => e.key === 'Escape' && (location.hash = closeHref);
+    const onKey = (e) => e.key === 'Escape' && !e.defaultPrevented && (location.hash = closeHref);
     addEventListener('keydown', onKey);
     return () => removeEventListener('keydown', onKey);
   }, [title, closeHref]);
@@ -145,13 +150,14 @@ export function PageDrawer({ title, closeHref }) {
           <h2 id="drawer-title" tabIndex={-1} ref={heading}>
             {p.data?.title ?? title}
           </h2>
-          {p.data && <PageMeta data={p.data} />}
+          {p.data && <PageMeta data={p.data} minutes={p.minutes} />}
         </div>
         <a className="icon-button" href={href('page', { title: p.data?.title ?? title })} aria-label="Open as full page" title="Open as full page">
-          <Maximize2 size={18} aria-hidden="true" />
+          <Maximize2 size={16} aria-hidden="true" />
         </a>
-        <a className="icon-button" href={closeHref} aria-label="Close page">
-          <X size={20} aria-hidden="true" />
+        {p.data && <PageMenu title={p.data.title} />}
+        <a className="icon-button" href={closeHref} aria-label="Close page" title="Close (Esc)">
+          <X size={18} aria-hidden="true" />
         </a>
       </header>
 
@@ -159,7 +165,6 @@ export function PageDrawer({ title, closeHref }) {
         <PageStatus page={p.page} title={title} />
         {p.data && (
           <>
-            <PageActions data={p.data} />
             <Properties fields={p.fields} missing={p.missing} />
             <article className="prose">
               <Markdown missing={p.missing} newestFirst={isDailyJournal(p.data)}>
@@ -178,77 +183,125 @@ export function PageDrawer({ title, closeHref }) {
 /** A page on its own, for reading: links inside it open further full pages. */
 export function PageView({ title }) {
   const p = usePage(title);
+  const { params } = useContext(RouteContext);
+  const copy = useCopy();
   const heading = useRef(null);
+  const prose = useRef(null);
+  const name = p.data?.title ?? title;
+  const sectionHref = useCallback((id) => href('page', { title: name, section: id }), [name]);
+  const copySection = useCallback((id) => copy(new URL(sectionHref(id), location.href).href, 'Link to section copied'), [copy, sectionHref]);
+  const headings = useHeadings(prose, p.body);
+  const active = useActiveHeading(prose, headings);
+  const toc = {
+    items: headings,
+    active,
+    hrefFor: sectionHref,
+    onPick: (id) => {
+      if (scrollToHeading(prose, id)) history.replaceState(null, '', sectionHref(id));
+    },
+  };
 
   useEffect(() => {
     heading.current?.focus();
   }, [title]);
 
+  useEffect(() => {
+    if (p.data && params.section) scrollToHeading(prose, params.section);
+  }, [p.data, params.section]);
+
   return (
-    <div className="view page-view">
-      <article className="page-main" aria-labelledby="page-title">
-        <header className="page-header">
-          <h1 id="page-title" tabIndex={-1} ref={heading}>
-            {p.data?.title ?? title}
-          </h1>
-          {p.data && <PageMeta data={p.data} />}
-          {p.data && <PageActions data={p.data} />}
-        </header>
-        <PageStatus page={p.page} title={title} />
-        {p.data && (
-          <>
-            <Properties fields={p.fields} missing={p.missing} />
-            <div className="prose page-prose">
-              <Markdown missing={p.missing} newestFirst={isDailyJournal(p.data)}>
-                {p.body}
-              </Markdown>
+    <>
+      <ReadingProgress />
+      <div className="view page-view">
+        <article className="page-main" aria-labelledby="page-title">
+          <header className="page-header">
+            <div className="page-crumbs">
+              <nav aria-label="Breadcrumb">
+                <ol>
+                  <li>
+                    <a href={href('search')}>Memory</a>
+                  </li>
+                  {p.data && (
+                    <li>
+                      <TypeBadge kind={p.data.kind} />
+                    </li>
+                  )}
+                </ol>
+              </nav>
+              {p.data && <PageMenu title={p.data.title} />}
             </div>
-          </>
-        )}
-      </article>
-      {p.data && (
-        <aside className="page-side" aria-label="Links and changes">
-          <LinkLists data={p.data} />
-          <RecentChanges changes={p.changes} />
-        </aside>
-      )}
-    </div>
+            <h1 id="page-title" tabIndex={-1} ref={heading}>
+              {name}
+            </h1>
+            {p.data && <PageMeta data={p.data} minutes={p.minutes} badge={false} />}
+          </header>
+          <PageStatus page={p.page} title={title} />
+          {p.data && (
+            <>
+              {headings.length > 1 && <TocMenu {...toc} />}
+              <Properties fields={p.fields} missing={p.missing} />
+              <div ref={prose} className="prose page-prose">
+                <Markdown missing={p.missing} newestFirst={isDailyJournal(p.data)} onAnchor={copySection}>
+                  {p.body}
+                </Markdown>
+              </div>
+              <footer className="page-foot">
+                <LinkLists data={p.data} as="h2" />
+                <RecentChanges changes={p.changes} as="h2" />
+              </footer>
+            </>
+          )}
+        </article>
+        {headings.length > 1 && <TocSide {...toc} />}
+      </div>
+    </>
   );
 }
 
-function PageMeta({ data }) {
+function PageMeta({ data, minutes, badge = true }) {
   return (
     <div className="meta-row">
-      <TypeBadge kind={data.kind} />
+      {badge && <TypeBadge kind={data.kind} />}
       {data.confidence && <span className="chip">confidence {data.confidence}</span>}
       <span>rev {data.rev}</span>
       <span>
         updated <RelTime iso={data.updated_at} /> by <span className="mono">{data.updated_by}</span>
       </span>
+      <span>{minutes} min read</span>
       <span>
-        last visit <RelTime iso={data.visited_at} />
+        visited <RelTime iso={data.visited_at} />
       </span>
     </div>
   );
 }
 
 function PageStatus({ page, title }) {
-  if (page.loading) return <Loading label="Loading page" />;
+  if (page.loading) return <Loading variant="article" label="Loading page" />;
   if (!page.error) return null;
-  if (/cannot find page/i.test(page.error.message)) return <Empty>No page called “{title}” yet. Pages link to it, but nobody has written it.</Empty>;
+  if (/cannot find page/i.test(page.error.message)) {
+    return (
+      <Empty icon={FileQuestion} title={`No page called “${title}” yet`} action={{ href: href('search', { q: title, mode: 'keywords' }), label: 'Search for it' }}>
+        Pages link to it, but nobody has written it.
+      </Empty>
+    );
+  }
   return <ErrorNote error={page.error} onRetry={page.reload} />;
 }
 
-function PageActions({ data }) {
+function PageMenu({ title }) {
+  const copy = useCopy();
   return (
-    <nav className="drawer-actions" aria-label="Page actions">
-      <a className="ghost" href={href('timeline', { title: data.title })}>
-        <History size={16} aria-hidden="true" /> History
-      </a>
-      <a className="ghost" href={href('graph', { focus: data.title, page: data.title })}>
-        <Network size={16} aria-hidden="true" /> Show in graph
-      </a>
-    </nav>
+    <Menu label="Page actions">
+      <MenuItem icon={History} href={href('timeline', { title })}>
+        History
+      </MenuItem>
+      <MenuItem icon={Network} href={href('graph', { focus: title, page: title })}>
+        Show in graph
+      </MenuItem>
+      <MenuItem icon={Link2} onSelect={() => copy(new URL(href('page', { title }), location.href).href, 'Link copied')}>
+        Copy link
+      </MenuItem>
+    </Menu>
   );
 }
 
@@ -268,47 +321,42 @@ function Properties({ fields, missing }) {
   );
 }
 
-function LinkLists({ data }) {
+function LinkLists({ data, as: Heading = 'h3' }) {
+  const ids = useId();
+  const lists = [
+    ['Backlinks', data.backlinks.map((t) => ({ title: t, missing: false })), 'No other page links here yet.'],
+    ['Links', data.links.map((l) => ({ title: l.title, missing: !l.exists })), 'This page links to nothing.'],
+  ];
   return (
     <div className="link-lists">
-      <section>
-        <h3>Links ({data.links.length})</h3>
-        {data.links.length ? (
-          <ul>
-            {data.links.map((l) => (
-              <li key={l.title}>
-                <PageLink title={l.title} missing={!l.exists} />
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <p className="muted">None</p>
-        )}
-      </section>
-      <section>
-        <h3>Backlinks ({data.backlinks.length})</h3>
-        {data.backlinks.length ? (
-          <ul>
-            {data.backlinks.map((t) => (
-              <li key={t}>
-                <PageLink title={t} />
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <p className="muted">None</p>
-        )}
-      </section>
+      {lists.map(([label, items, none]) => (
+        <section key={label} aria-labelledby={`${ids}-${label}`}>
+          <Heading id={`${ids}-${label}`}>
+            {label} <span className="count">{items.length}</span>
+          </Heading>
+          {items.length ? (
+            <ul className="link-chips">
+              {items.map((item) => (
+                <li key={item.title}>
+                  <PageLink title={item.title} missing={item.missing} />
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="muted small">{none}</p>
+          )}
+        </section>
+      ))}
     </div>
   );
 }
 
-function RecentChanges({ changes }) {
+function RecentChanges({ changes, as: Heading = 'h3' }) {
   if (changes.error) return <ErrorNote error={changes.error} onRetry={changes.reload} />;
   if (!changes.data?.length) return null;
   return (
     <section className="recent-changes">
-      <h3>Recent changes</h3>
+      <Heading>Recent changes</Heading>
       <ol>
         {changes.data.map((r) => (
           <li key={r.seq}>

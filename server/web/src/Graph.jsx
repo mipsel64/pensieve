@@ -3,7 +3,8 @@ import ForceGraph2D from 'react-force-graph-2d';
 import { Crosshair, RotateCcw, Settings2, X } from 'lucide-react';
 import { href } from './router.js';
 import { ErrorNote, formatNumber, KIND_COLORS, KINDS, Loading, useResource } from './ui.jsx';
-import { accentColor, GraphControls, resetGraph, useSettings } from './settings.jsx';
+import { GraphControls, resetGraph, useSettings } from './settings.jsx';
+import { cssColor, useTheme } from './theme.js';
 
 const kindOf = (node) => (node.missing ? 'missing' : (node.kind ?? 'untyped'));
 const endpoint = (end) => (typeof end === 'object' ? end.id : end);
@@ -11,14 +12,25 @@ const nodeVal = (node) => 1 + Math.sqrt(node.degree);
 const noLabel = () => '';
 const noop = () => {};
 
-const GREY = '#9aa4a3';
-const TEXT = '#e6ebea';
-const LINK = 'rgba(190, 206, 204, 0.16)';
-const LINK_DIM = 'rgba(190, 206, 204, 0.045)';
 // Labels are sized in graph units, so they grow as you zoom in.
 const LABEL_SIZE = 5;
 const FONT = '"IBM Plex Sans Variable", system-ui, sans-serif';
 const BASE_FONT = `${LABEL_SIZE}px ${FONT}`;
+
+// The canvas cannot read var(), so colors are looked up per theme.
+function readPalette() {
+  const kinds = {};
+  for (const kind of Object.keys(KIND_COLORS)) kinds[kind] = cssColor(`--kind-${kind}`);
+  return {
+    kinds,
+    link: cssColor('--graph-link'),
+    linkDim: cssColor('--graph-link-dim'),
+    label: cssColor('--graph-label'),
+    halo: cssColor('--graph-halo'),
+    ring: cssColor('--graph-ring'),
+    highlight: cssColor('--graph-highlight'),
+  };
+}
 
 // Pulls every node toward the centre, so separate clusters and orphans don't drift away.
 function gravity(strength) {
@@ -37,7 +49,9 @@ export function GraphView({ params }) {
   const graph = useResource('/graph');
   const { settings, update, status, retry } = useSettings();
   const g = settings.graph;
-  const accent = accentColor(settings);
+  const { resolved } = useTheme();
+  // Reading CSS values after a theme change gives the new palette; `resolved` is the cue.
+  const palette = useMemo(readPalette, [resolved]);
   const box = useRef(null);
   const fg = useRef(null);
   const [size, setSize] = useState({ width: 0, height: 0 });
@@ -136,7 +150,7 @@ export function GraphView({ params }) {
       // A search in progress decides what stands out, even over the selected page's neighbourhood.
       const dim = searching ? !matched : !lit;
       const r = Math.sqrt(nodeVal(n)) * relSize;
-      const color = n.id === active ? accent : g.colorByType ? KIND_COLORS[kindOf(n)] : n.missing ? KIND_COLORS.missing : GREY;
+      const color = n.id === active ? palette.highlight : g.colorByType ? palette.kinds[kindOf(n)] : n.missing ? palette.kinds.missing : palette.kinds.untyped;
       ctx.globalAlpha = dim ? 0.16 : 1;
       ctx.beginPath();
       ctx.arc(n.x, n.y, r, 0, 2 * Math.PI);
@@ -152,32 +166,40 @@ export function GraphView({ params }) {
         ctx.beginPath();
         ctx.arc(n.x, n.y, r + 2.4, 0, 2 * Math.PI);
         ctx.lineWidth = 1;
-        ctx.strokeStyle = TEXT;
+        ctx.strokeStyle = palette.label;
+        ctx.stroke();
+      } else if (!n.missing) {
+        ctx.lineWidth = 0.8;
+        ctx.strokeStyle = palette.ring;
         ctx.stroke();
       }
       const emphasised = (active && lit) || matched || n.id === selected;
       const alpha = emphasised && !dim ? 1 : dim ? 0 : Math.min(1, Math.max(0, (scale - g.textFade) / 0.6));
       if (alpha > 0.02) {
         ctx.globalAlpha = alpha;
-        ctx.fillStyle = TEXT;
+        ctx.fillStyle = palette.label;
+        ctx.strokeStyle = palette.halo;
         // Highlighted labels stay readable when zoomed out; the rest share the frame's font.
         const small = emphasised && LABEL_SIZE * scale < 11;
         if (small) ctx.font = `${11 / scale}px ${FONT}`;
+        ctx.lineWidth = (small ? 3.5 : 2) / (small ? scale : 1);
+        ctx.strokeText(n.id, n.x, n.y + r + 1.5);
         ctx.fillText(n.id, n.x, n.y + r + 1.5);
         if (small) ctx.font = BASE_FONT;
       }
       ctx.globalAlpha = 1;
     },
-    [active, near, searching, query, selected, accent, relSize, g.colorByType, g.textFade],
+    [active, near, searching, query, selected, palette, relSize, g.colorByType, g.textFade],
   );
 
   const incident = useCallback((l) => active && (endpoint(l.source) === active || endpoint(l.target) === active), [active]);
-  const linkColor = useCallback((l) => (incident(l) ? `${accent}cc` : active || searching ? LINK_DIM : LINK), [incident, accent, active, searching]);
+  const linkColor = useCallback((l) => (incident(l) ? palette.highlight : active || searching ? palette.linkDim : palette.link), [incident, palette, active, searching]);
   const linkWidth = useCallback((l) => (incident(l) ? g.linkWidth * 1.6 : g.linkWidth), [incident, g.linkWidth]);
   const beforeFrame = useCallback((ctx) => {
     ctx.font = BASE_FONT;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'top';
+    ctx.lineJoin = 'round';
   }, []);
 
   if (graph.loading && !graph.data) return <Loading label="Loading graph" />;
@@ -207,7 +229,7 @@ export function GraphView({ params }) {
             graphData={data}
             width={size.width}
             height={size.height}
-            backgroundColor="rgba(0, 0, 0, 0)"
+            backgroundColor="transparent"
             nodeRelSize={relSize}
             nodeVal={nodeVal}
             nodeLabel={noLabel}
@@ -301,7 +323,7 @@ export function GraphView({ params }) {
               {kinds.map((kind) => (
                 <li key={kind}>
                   <button type="button" className="legend-item" aria-pressed={!hidden.has(kind)} onClick={() => toggleKind(kind)}>
-                    <span className="dot" style={{ background: g.colorByType ? KIND_COLORS[kind] : GREY }} aria-hidden="true" />
+                    <span className="dot" style={{ background: g.colorByType ? KIND_COLORS[kind] : KIND_COLORS.untyped }} aria-hidden="true" />
                     <span className="legend-name">{kind}</span>
                     <span className="mono muted">{formatNumber(model.counts[kind])}</span>
                   </button>

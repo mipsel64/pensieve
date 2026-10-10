@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Check, Loader2, LogOut, RotateCcw } from 'lucide-react';
+import { ThemeSegmented } from './ThemeSwitch.jsx';
 import { ACCENTS, GraphControls, resetGraph, SEARCH_MODES, Toggle, useSettings } from './settings.jsx';
 
 const MODE_LABELS = {
@@ -21,12 +22,17 @@ export function Settings({ onSignOut }) {
 
       <section className="card settings-section" aria-labelledby="appearance-title">
         <h2 id="appearance-title">Appearance</h2>
+        <div className="appearance-row">
+          <span id="theme-label">Theme</span>
+          <ThemeSegmented labelledBy="theme-label" />
+        </div>
+        <p className="muted small">Saved in this browser only. System follows your device setting.</p>
         <fieldset className="swatches">
           <legend>Accent</legend>
-          {Object.entries(ACCENTS).map(([id, { label, color }]) => (
+          {Object.entries(ACCENTS).map(([id, { label }]) => (
             <label key={id} className="swatch">
               <input type="radio" name="accent" value={id} checked={settings.accent === id} onChange={() => update(null, { accent: id })} />
-              <span className="swatch-color" style={{ background: color }} aria-hidden="true" />
+              <span className="swatch-color" style={{ background: `var(--accent-${id})` }} aria-hidden="true" />
               {label}
             </label>
           ))}

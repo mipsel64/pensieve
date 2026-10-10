@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import { NotebookPen } from 'lucide-react';
 import { query } from './api.js';
 import { href } from './router.js';
 import { Empty, ErrorNote, Loading, Markdown, PageLink, RelTime, splitFrontmatter, useResource } from './ui.jsx';
@@ -27,7 +28,7 @@ export function Journal({ params }) {
   const day = params.day ?? days[0];
   const scratchpad = useResource('/pages/Scratchpad');
 
-  if (list.loading && !list.data) return <Loading label="Loading journal" />;
+  if (list.loading && !list.data) return <Loading label="Loading journal" variant="page" />;
   if (list.error) return <ErrorNote error={list.error} onRetry={list.reload} />;
 
   return (
@@ -40,7 +41,9 @@ export function Journal({ params }) {
             <header className="page-header">
               <h1 id="page-title">Journal</h1>
             </header>
-            <Empty>No journal yet. pi-pensieve adds a summary of each Pi session here when the session ends.</Empty>
+            <Empty icon={NotebookPen} title="No journal yet">
+              pi-pensieve adds a summary of each Pi session here when the session ends.
+            </Empty>
           </>
         )}
       </article>
@@ -94,7 +97,7 @@ function Day({ day }) {
 }
 
 function PageBody({ resource, className, empty, newestFirst = false }) {
-  if (resource.loading) return <Loading />;
+  if (resource.loading) return <Loading variant="article" />;
   if (resource.error) {
     return /cannot find page/i.test(resource.error.message) ? <Empty>{empty}</Empty> : <ErrorNote error={resource.error} onRetry={resource.reload} />;
   }
