@@ -1,4 +1,7 @@
-use std::sync::Arc;
+use std::{
+    sync::Arc,
+    time::{SystemTime, UNIX_EPOCH},
+};
 
 use axum::{
     Json, Router,
@@ -16,23 +19,37 @@ use subtle::ConstantTimeEq;
 use crate::{
     error::Result,
     mcp,
+    oauth::{self, OAuth},
     rerank::Reranker,
     retrieval::{self, DEFAULT_BUDGET, MAX_BUDGET},
-    session,
-    storage::{Change, Graph, HistoryFilter, Page, Revision, Stats, Storage},
+    session::{self, Subject},
+    storage::{Change, Grant, Graph, HistoryFilter, Page, Revision, Stats, Storage},
 };
 
 const CSP: &str = "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; frame-ancestors 'none'";
 static WEB: Dir<'_> = include_dir!("$CARGO_MANIFEST_DIR/web/dist");
 
+pub type Clock = Arc<dyn Fn() -> i64 + Send + Sync>;
+
+pub fn system_clock() -> Clock {
+    Arc::new(|| {
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map_or(0, |duration| duration.as_secs() as i64)
+    })
+}
+
 pub struct App {
     pub storage: Arc<dyn Storage>,
     pub reranker: Option<Arc<dyn Reranker>>,
-    pub token: String,
+    pub token: Option<String>,
+    pub oauth: Option<OAuth>,
+    pub session_key: [u8; 32],
+    pub clock: Clock,
 }
 
 pub fn router(app: Arc<App>) -> Router {
-    let api = Router::new()
+    let mut protected = Router::new()
         .route("/search", get(search))
         .route("/graph", get(graph))
         .route("/pages/{title}", get(read).put(write))
@@ -45,24 +62,47 @@ pub fn router(app: Arc<App>) -> Router {
             get(settings)
                 .put(save_settings)
                 .layer(DefaultBodyLimit::max(MAX_SETTINGS_BYTES)),
-        )
-        .route_layer(middleware::from_fn_with_state(app.clone(), auth))
-        .route("/login", post(login))
+        );
+    if app.oauth.is_some() {
+        protected = protected
+            .route("/grants", get(grants))
+            .route("/grants/{id}", axum::routing::delete(revoke_grant));
+    }
+    let protected = protected.route_layer(middleware::from_fn_with_state(app.clone(), api_auth));
+    let mut api = Router::new()
+        .route("/auth", get(auth_methods))
+        .merge(protected)
         .route(
             "/logout",
-            post(|| async {
+            post(|headers: HeaderMap| async move {
                 (
                     StatusCode::NO_CONTENT,
-                    [(header::SET_COOKIE, session::clear())],
+                    [(header::SET_COOKIE, session::clear(&headers))],
                 )
             }),
         );
-    Router::new()
+    if app.token.is_some() {
+        api = api.route("/login", post(login));
+    }
+    let mcp = Router::new()
         .route("/mcp", post(mcp))
-        .route_layer(middleware::from_fn_with_state(app.clone(), auth))
-        .nest("/api", api)
-        .fallback(asset)
-        .with_state(app)
+        .route_layer(middleware::from_fn_with_state(app.clone(), mcp_auth));
+    let mut root = Router::new().merge(mcp).nest("/api", api);
+    if app.oauth.is_some() {
+        root = root.merge(oauth::routes());
+    }
+    root.fallback(asset).with_state(app)
+}
+
+async fn auth_methods(State(app): State<Arc<App>>) -> Json<Value> {
+    let mut methods = Vec::new();
+    if app.oauth.is_some() {
+        methods.push("google");
+    }
+    if app.token.is_some() {
+        methods.push("token");
+    }
+    Json(json!({ "methods": methods }))
 }
 
 async fn asset(uri: Uri) -> Response {
@@ -97,22 +137,84 @@ async fn asset(uri: Uri) -> Response {
         .into_response()
 }
 
-/// Agents authenticate with the bearer token; the web UI with a session cookie, which only
-/// authorizes reads so a cross-site form can't write with it. The one exception, the UI's own
-/// settings, takes only a JSON body, which a cross-site page can't send without CORS approval.
-async fn auth(State(app): State<Arc<App>>, request: Request, next: Next) -> Response {
-    let headers = request.headers();
-    let bearer = headers
+fn bearer(headers: &HeaderMap) -> Option<&str> {
+    headers
         .get(header::AUTHORIZATION)
         .and_then(|v| v.to_str().ok())
         .and_then(|v| v.split_once(' '))
         .filter(|(scheme, _)| scheme.eq_ignore_ascii_case("bearer"))
         .map(|(_, token)| token.trim())
-        .is_some_and(|token| bool::from(token.as_bytes().ct_eq(app.token.as_bytes())));
-    let read = matches!(*request.method(), Method::GET | Method::HEAD)
-        || request.uri().path() == "/settings";
-    if !(bearer || (read && session::valid(&app.token, headers))) {
+}
+
+fn server_token(app: &App, token: &str) -> bool {
+    app.token
+        .as_deref()
+        .is_some_and(|expected| bool::from(token.as_bytes().ct_eq(expected.as_bytes())))
+}
+
+/// Cookies only read, plus settings and grant revocation, which a cross-site page can't send
+/// without CORS approval; so no web page can change memory through a signed-in browser.
+async fn api_auth(State(app): State<Arc<App>>, request: Request, next: Next) -> Response {
+    let headers = request.headers();
+    let bearer = bearer(headers).is_some_and(|token| server_token(&app, token));
+    let path = request.uri().path();
+    let cookie_method = matches!(*request.method(), Method::GET | Method::HEAD)
+        || (*request.method() == Method::PUT && path == "/settings")
+        || (*request.method() == Method::DELETE
+            && path
+                .strip_prefix("/grants/")
+                .is_some_and(|id| !id.is_empty() && !id.contains('/')));
+    let subject = session::verify(
+        &app.session_key,
+        app.token.as_deref(),
+        app.oauth.is_some(),
+        headers,
+        (app.clock)(),
+    );
+    let cookie = match subject {
+        Some(Subject::Token) => true,
+        Some(Subject::Email(email)) => app.oauth.as_ref().is_some_and(|oauth| oauth.allows(&email)),
+        None => false,
+    };
+    if !(bearer || (cookie_method && cookie)) {
         return StatusCode::UNAUTHORIZED.into_response();
+    }
+    let mut response = next.run(request).await;
+    response
+        .headers_mut()
+        .insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
+    response
+}
+
+async fn mcp_auth(State(app): State<Arc<App>>, request: Request, next: Next) -> Response {
+    let bearer = bearer(request.headers());
+    let mut authorized = bearer.is_some_and(|token| server_token(&app, token));
+    if !authorized && let (Some(token), Some(oauth)) = (bearer, app.oauth.as_ref()) {
+        authorized = oauth
+            .valid_access(app.storage.as_ref(), token, (app.clock)())
+            .await;
+    }
+    if !authorized {
+        let Some(oauth) = app.oauth.as_ref() else {
+            return StatusCode::UNAUTHORIZED.into_response();
+        };
+        let resource = format!(
+            "{}/.well-known/oauth-protected-resource/mcp",
+            oauth.public_url()
+        );
+        let challenge = if bearer.is_some() {
+            format!("Bearer error=\"invalid_token\", resource_metadata=\"{resource}\"")
+        } else {
+            format!("Bearer resource_metadata=\"{resource}\"")
+        };
+        return (
+            StatusCode::UNAUTHORIZED,
+            [(
+                header::WWW_AUTHENTICATE,
+                HeaderValue::from_str(&challenge).expect("cannot create bearer challenge"),
+            )],
+        )
+            .into_response();
     }
     let mut response = next.run(request).await;
     response
@@ -155,14 +257,32 @@ async fn login(
     headers: HeaderMap,
     Json(body): Json<LoginBody>,
 ) -> Response {
-    if !bool::from(body.token.trim().as_bytes().ct_eq(app.token.as_bytes())) {
+    let Some(token) = app.token.as_deref() else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
+    if !bool::from(body.token.trim().as_bytes().ct_eq(token.as_bytes())) {
         return StatusCode::UNAUTHORIZED.into_response();
     }
     (
         StatusCode::NO_CONTENT,
-        [(header::SET_COOKIE, session::issue(&app.token, &headers))],
+        [(
+            header::SET_COOKIE,
+            session::issue_token(&app.session_key, token, &headers, (app.clock)()),
+        )],
     )
         .into_response()
+}
+
+async fn grants(State(app): State<Arc<App>>) -> Result<Json<Vec<Grant>>> {
+    Ok(Json(app.storage.grants().await?))
+}
+
+async fn revoke_grant(State(app): State<Arc<App>>, Path(id): Path<String>) -> Response {
+    match app.storage.revoke_grant(&id).await {
+        Ok(true) => StatusCode::NO_CONTENT.into_response(),
+        Ok(false) => StatusCode::NOT_FOUND.into_response(),
+        Err(error) => error.into_response(),
+    }
 }
 
 #[derive(Deserialize)]
@@ -384,7 +504,10 @@ mod tests {
         let app = Arc::new(App {
             storage,
             reranker: None,
-            token: token.into(),
+            token: Some(token.into()),
+            oauth: None,
+            session_key: [0; 32],
+            clock: Arc::new(|| 0),
         });
         tokio::spawn(axum::serve(listener, router(app)).into_future());
         let http = Client::new();
@@ -491,7 +614,10 @@ mod tests {
         let app = Arc::new(App {
             storage,
             reranker: None,
-            token: token.clone(),
+            token: Some(token.clone()),
+            oauth: None,
+            session_key: [0; 32],
+            clock: Arc::new(|| 0),
         });
         tokio::spawn(axum::serve(listener, router(app)).into_future());
         let http = Client::new();

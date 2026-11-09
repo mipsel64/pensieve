@@ -644,7 +644,10 @@ mod tests {
         let app = App {
             storage,
             reranker: None,
-            token: String::new(),
+            token: None,
+            oauth: None,
+            session_key: [0; 32],
+            clock: Arc::new(|| 0),
         };
         let page = |kind: &str, body: &str| format!("---\ntype: {kind}\n---\n{body}");
 
@@ -804,7 +807,10 @@ mod tests {
         let app = App {
             storage,
             reranker: None,
-            token: String::new(),
+            token: None,
+            oauth: None,
+            session_key: [0; 32],
+            clock: Arc::new(|| 0),
         };
         let (text, error) = tool(&app, "write", json!({ "title": "Redis", "content": "---\ntype: topic\n---\nRedis cache. Scratchpad holds notes.", "summary": "Add topic" })).await;
         assert!(!error, "{text}");
@@ -898,7 +904,10 @@ mod tests {
         let app = App {
             storage,
             reranker: None,
-            token: String::new(),
+            token: None,
+            oauth: None,
+            session_key: [0; 32],
+            clock: Arc::new(|| 0),
         };
         let content = "---\ntype: topic\n---\nRedis intro.\n\n## Eviction\nLRU sampling.\n";
         let (text, error) = tool(

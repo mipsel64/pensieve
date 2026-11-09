@@ -2,6 +2,7 @@ mod config;
 mod error;
 mod markdown;
 mod mcp;
+mod oauth;
 mod rerank;
 mod retrieval;
 mod server;
@@ -22,8 +23,9 @@ use tokio::signal::unix::{SignalKind, signal};
 
 use crate::{
     config::Config,
+    oauth::{Google, OAuth},
     rerank::{Reranker, jev::Jev},
-    server::App,
+    server::{App, system_clock},
     storage::{Change, SqliteStorage, Storage},
 };
 
@@ -70,13 +72,10 @@ async fn run() -> CliResult {
     let storage: Arc<dyn Storage> = Arc::new(storage);
     match cli.command {
         Command::Serve => {
-            let Config { server, jev, .. } = config;
-            if server.token.len() < 16 {
-                return Err(
-                    "cannot start: server.token (or PENSIEVE_TOKEN) must be at least 16 characters"
-                        .into(),
-                );
-            }
+            config.validate()?;
+            let Config {
+                server, jev, oauth, ..
+            } = config;
             let reranker = jev.key.filter(|key| !key.is_empty()).map(|key| {
                 let (url, model) = jev.provider.preset();
                 Arc::new(Jev::new(url, model, key)) as Arc<dyn Reranker>
@@ -87,14 +86,32 @@ async fn run() -> CliResult {
                 "BM25"
             };
             eprintln!(
-                "pensieve: db {} · search {search} · http://{}",
+                "pensieve: db {} · search {search} · http://{} · auth {}",
                 db.display(),
-                server.listen
+                server.listen,
+                server.auth
             );
+            let token = server.auth.token().then_some(server.token);
+            let oauth = server.auth.oauth().then(|| {
+                OAuth::new(
+                    &oauth.public_url,
+                    Google::new(oauth.google_client_id, oauth.google_client_secret),
+                    oauth.allowed_emails,
+                )
+            });
+            let mut fresh = [0; 32];
+            getrandom::fill(&mut fresh)?;
+            let session_key = storage.secret("session", &fresh).await?;
+            let session_key: [u8; 32] = session_key
+                .try_into()
+                .map_err(|_| "cannot start: stored session secret must be 32 bytes")?;
             let app = Arc::new(App {
                 storage,
                 reranker,
-                token: server.token,
+                token,
+                oauth,
+                session_key,
+                clock: system_clock(),
             });
             let listener = tokio::net::TcpListener::bind(server.listen).await?;
             // Explicit handlers: as PID 1 in a container, signals without one are ignored.

@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { Check, Loader2, LogOut, RotateCcw } from 'lucide-react';
 import { ThemeSegmented } from './ThemeSwitch.jsx';
+import { api } from './api.js';
+import { Empty, ErrorNote, Loading, RelTime, useResource } from './ui.jsx';
 import { ACCENTS, GraphControls, resetGraph, SEARCH_MODES, Toggle, useSettings } from './settings.jsx';
 
 const MODE_LABELS = {
@@ -8,7 +10,7 @@ const MODE_LABELS = {
   keywords: 'Pages: whole pages ranked by their words',
 };
 
-export function Settings({ onSignOut }) {
+export function Settings({ oauth, onSignOut }) {
   const { settings, update, status, retry } = useSettings();
   const [signOutError, setSignOutError] = useState(null);
 
@@ -77,6 +79,8 @@ export function Settings({ onSignOut }) {
         </div>
       </section>
 
+      {oauth && <ConnectedApps />}
+
       <section className="card settings-section" aria-labelledby="session-title">
         <h2 id="session-title">Session</h2>
         <p className="muted">This browser stays signed in for 30 days. Signing out here doesn't affect other browsers or agents.</p>
@@ -97,6 +101,58 @@ export function Settings({ onSignOut }) {
         </button>
       </section>
     </div>
+  );
+}
+
+function ConnectedApps() {
+  const { data, error, loading, reload } = useResource('/grants');
+  const [revoking, setRevoking] = useState(null);
+  const [revokeError, setRevokeError] = useState(null);
+
+  async function revoke(id) {
+    setRevoking(id);
+    setRevokeError(null);
+    try {
+      await api(`/grants/${encodeURIComponent(id)}`, { method: 'DELETE' });
+      reload();
+    } catch (err) {
+      setRevokeError(err);
+    } finally {
+      setRevoking(null);
+    }
+  }
+
+  return (
+    <section className="card settings-section" aria-labelledby="connected-apps-title">
+      <h2 id="connected-apps-title">Connected apps</h2>
+      <p className="muted">Apps you approved can read and change all of Pensieve's memory.</p>
+      {loading && !data && <Loading label="Loading connected apps" />}
+      {error && <ErrorNote error={error} onRetry={reload} />}
+      {data?.length === 0 && <Empty>No connected apps.</Empty>}
+      {data?.length > 0 && (
+        <ul className="grant-list">
+          {data.map((grant) => (
+            <li className="grant" key={grant.id}>
+              <div className="grant-details">
+                <strong>{grant.client_name}</strong>
+                <span className="muted">{grant.email}</span>
+                <span className="muted small">
+                  Approved <RelTime iso={grant.created_at} /> · Last refreshed <RelTime iso={grant.refreshed_at} />
+                </span>
+              </div>
+              <button type="button" className="ghost" disabled={revoking !== null} onClick={() => revoke(grant.id)}>
+                {revoking === grant.id ? 'Revoking…' : 'Revoke'}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      {revokeError && (
+        <p className="field-error" role="alert">
+          Couldn't revoke the app: {revokeError.message}
+        </p>
+      )}
+    </section>
   );
 }
 

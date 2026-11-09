@@ -5,7 +5,7 @@ import '@fontsource-variable/ibm-plex-sans/wght.css';
 import '@fontsource-variable/jetbrains-mono/wght.css';
 import './style.css';
 import { initTheme, nextPreference, useTheme } from './theme.js';
-import { api, logout, Unauthorized } from './api.js';
+import { api, authMethods, logout, Unauthorized } from './api.js';
 import { href, RouteContext, useHashRoute } from './router.js';
 import { AuthContext, Empty, ErrorNote, Loading, Logo } from './ui.jsx';
 import { Login } from './Login.jsx';
@@ -34,15 +34,19 @@ function App() {
   const latest = useRef(0);
   const settle = useCallback((next) => {
     latest.current++;
-    setAuth(next);
+    setAuth((current) => ({ ...next, methods: next.methods ?? current.methods }));
   }, []);
   // Loading the settings doubles as the session check: it's the first thing a signed-in UI needs.
   const check = useCallback(() => {
     const request = ++latest.current;
     setAuth({ state: 'checking' });
-    api('/settings')
-      .then((settings) => request === latest.current && setAuth({ state: 'in', settings }))
-      .catch((error) => request === latest.current && setAuth(error instanceof Unauthorized ? { state: 'out' } : { state: 'error', error }));
+    authMethods()
+      .then(({ methods }) => {
+        api('/settings')
+          .then((settings) => request === latest.current && setAuth({ state: 'in', settings, methods }))
+          .catch((error) => request === latest.current && setAuth(error instanceof Unauthorized ? { state: 'out', methods } : { state: 'error', error, methods }));
+      })
+      .catch((error) => request === latest.current && setAuth({ state: 'error', error }));
   }, []);
   useEffect(check, [check]);
   const lock = useCallback(() => settle({ state: 'out' }), [settle]);
@@ -55,19 +59,19 @@ function App() {
 
   if (auth.state === 'checking') return <Loading label="Connecting" />;
   if (auth.state === 'error') return <ErrorNote error={auth.error} onRetry={check} />;
-  if (auth.state === 'out') return <Login onSuccess={check} />;
+  if (auth.state === 'out') return <Login methods={auth.methods ?? []} onSuccess={check} />;
   return (
     <AuthContext.Provider value={lock}>
       <SettingsProvider initial={auth.settings}>
         <ToastProvider>
-          <Shell onSignOut={signOut} />
+          <Shell methods={auth.methods} onSignOut={signOut} />
         </ToastProvider>
       </SettingsProvider>
     </AuthContext.Provider>
   );
 }
 
-function Shell({ onSignOut }) {
+function Shell({ methods, onSignOut }) {
   const route = useHashRoute();
   const { view, params } = route;
   const main = useRef(null);
@@ -138,7 +142,7 @@ function Shell({ onSignOut }) {
     journal: <Journal params={params} />,
     activity: <Activity />,
     search: <Search params={params} />,
-    settings: <Settings onSignOut={signOut} />,
+    settings: <Settings oauth={methods.includes('google')} onSignOut={signOut} />,
     page: params.title ? (
       <PageView key={params.title} title={params.title} />
     ) : (

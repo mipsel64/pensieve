@@ -512,6 +512,33 @@ button:disabled {
   font-weight: 500;
 }
 
+.login-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.google-login {
+  justify-content: center;
+  text-decoration: none;
+}
+
+.login-divider {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.login-divider::before,
+.login-divider::after {
+  height: 1px;
+  flex: 1;
+  background: var(--border);
+  content: '';
+}
+
 .field {
   display: flex;
   align-items: center;
@@ -2190,6 +2217,37 @@ button:disabled {
 
 .settings-section .ghost {
   justify-self: start;
+}
+
+.grant-list {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.grant {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 0;
+  border-top: 1px solid var(--border);
+}
+
+.grant-details {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+}
+
+.grant-details strong,
+.grant-details span {
+  overflow-wrap: anywhere;
+}
+
+.grant .ghost {
+  flex-shrink: 0;
 }
 
 /* Full page */
