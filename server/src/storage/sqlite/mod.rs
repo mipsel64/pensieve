@@ -9,8 +9,9 @@ use async_trait::async_trait;
 use rusqlite::{Connection, OptionalExtension, Row, params};
 
 use super::{
-    Author, Count, Draft, Edge, Grant, Graph, HistoryFilter, Hit, Link, Node, OAuthClient,
-    OAuthToken, Page, Passage, Revision, Stale, Stats, Storage, TokenKind, TokenOwner, Visit,
+    ApiToken, Author, Count, Draft, Edge, Grant, Graph, HistoryFilter, Hit, Link, Node,
+    OAuthClient, OAuthToken, Page, Passage, Revision, Stale, Stats, Storage, TokenKind, TokenOwner,
+    Visit,
 };
 use crate::{
     error::{Error, Result},
@@ -203,6 +204,36 @@ impl Storage for SqliteStorage {
     async fn revoke_grant(&self, id: &str) -> Result<bool> {
         let id = id.to_owned();
         self.run(move |conn| revoke_grant(conn, &id)).await
+    }
+
+    async fn create_api_token(
+        &self,
+        id: &str,
+        name: &str,
+        hash: &str,
+        email: &str,
+        now: i64,
+    ) -> Result<()> {
+        let id = id.to_owned();
+        let name = name.to_owned();
+        let hash = hash.to_owned();
+        let email = email.to_owned();
+        self.run(move |conn| create_api_token(conn, &id, &name, &hash, &email, now))
+            .await
+    }
+
+    async fn api_token_owner(&self, hash: &str) -> Result<Option<String>> {
+        let hash = hash.to_owned();
+        self.run(move |conn| api_token_owner(conn, &hash)).await
+    }
+
+    async fn api_tokens(&self) -> Result<Vec<ApiToken>> {
+        self.run(api_tokens).await
+    }
+
+    async fn revoke_api_token(&self, id: &str) -> Result<bool> {
+        let id = id.to_owned();
+        self.run(move |conn| revoke_api_token(conn, &id)).await
     }
 }
 
@@ -399,6 +430,52 @@ fn grants(conn: &mut Connection) -> Result<Vec<Grant>> {
 
 fn revoke_grant(conn: &Connection, id: &str) -> Result<bool> {
     Ok(conn.execute("DELETE FROM oauth_grants WHERE id = ?1", [id])? > 0)
+}
+
+fn create_api_token(
+    conn: &Connection,
+    id: &str,
+    name: &str,
+    hash: &str,
+    email: &str,
+    now: i64,
+) -> Result<()> {
+    conn.execute(
+        "INSERT INTO api_tokens (id, name, hash, email, created_at) VALUES (?1, ?2, ?3, ?4, ?5)",
+        params![id, name, hash, email, now],
+    )?;
+    Ok(())
+}
+
+fn api_token_owner(conn: &Connection, hash: &str) -> Result<Option<String>> {
+    Ok(conn
+        .query_row(
+            "SELECT email FROM api_tokens WHERE hash = ?1",
+            [hash],
+            |r| r.get(0),
+        )
+        .optional()?)
+}
+
+fn api_tokens(conn: &mut Connection) -> Result<Vec<ApiToken>> {
+    Ok(conn
+        .prepare(
+            "SELECT id, name, email, strftime('%Y-%m-%dT%H:%M:%SZ', created_at, 'unixepoch')
+             FROM api_tokens ORDER BY created_at DESC, id ASC",
+        )?
+        .query_map([], |r| {
+            Ok(ApiToken {
+                id: r.get(0)?,
+                name: r.get(1)?,
+                email: r.get(2)?,
+                created_at: r.get(3)?,
+            })
+        })?
+        .collect::<rusqlite::Result<_>>()?)
+}
+
+fn revoke_api_token(conn: &Connection, id: &str) -> Result<bool> {
+    Ok(conn.execute("DELETE FROM api_tokens WHERE id = ?1", [id])? > 0)
 }
 
 fn migrate(conn: &mut Connection) -> Result<()> {

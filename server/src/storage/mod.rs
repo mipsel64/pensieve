@@ -57,6 +57,15 @@ pub struct TokenOwner {
     pub resource: String,
 }
 
+/// For the API tokens list. Never carries the token or its hash. Times are ISO 8601 UTC, like page times.
+#[derive(Serialize, Clone, Debug, PartialEq)]
+pub struct ApiToken {
+    pub id: String,
+    pub name: String,
+    pub email: String,
+    pub created_at: String,
+}
+
 /// Times are ISO 8601 UTC, like page times.
 #[derive(Serialize, Clone, Debug, PartialEq)]
 pub struct Grant {
@@ -156,6 +165,25 @@ pub trait Storage: Send + Sync {
 
     /// Deletes a grant and its tokens; false when it doesn't exist.
     async fn revoke_grant(&self, id: &str) -> Result<bool>;
+
+    /// Saves a new API token by its hash.
+    async fn create_api_token(
+        &self,
+        id: &str,
+        name: &str,
+        hash: &str,
+        email: &str,
+        now: i64,
+    ) -> Result<()>;
+
+    /// The owner email of the API token with this hash.
+    async fn api_token_owner(&self, hash: &str) -> Result<Option<String>>;
+
+    /// Every API token, created_at descending, then id ascending.
+    async fn api_tokens(&self) -> Result<Vec<ApiToken>>;
+
+    /// Deletes an API token; false when it doesn't exist.
+    async fn revoke_api_token(&self, id: &str) -> Result<bool>;
 
     /// Validates and writes a page, returning its rev.
     async fn put(

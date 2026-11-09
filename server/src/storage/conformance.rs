@@ -280,6 +280,7 @@ pub(crate) async fn check(storage: &dyn Storage) {
     );
 
     check_oauth(storage).await;
+    check_api_tokens(storage).await;
 }
 
 async fn check_oauth(storage: &dyn Storage) {
@@ -597,4 +598,68 @@ async fn check_oauth(storage: &dyn Storage) {
         );
     }
     assert!(!storage.revoke_grant("b-grant").await.unwrap());
+}
+
+async fn check_api_tokens(storage: &dyn Storage) {
+    assert_eq!(storage.api_token_owner("unknown").await.unwrap(), None);
+    assert!(!storage.revoke_api_token("unknown").await.unwrap());
+
+    storage
+        .create_api_token("b-token", "Newer B", "hash-b", "b@example.com", 200)
+        .await
+        .unwrap();
+    storage
+        .create_api_token("a-token", "Newer A", "hash-a", "a@example.com", 200)
+        .await
+        .unwrap();
+    storage
+        .create_api_token("z-token", "Older", "hash-z", "z@example.com", 100)
+        .await
+        .unwrap();
+    assert_eq!(
+        storage.api_token_owner("hash-a").await.unwrap(),
+        Some("a@example.com".into())
+    );
+
+    let tokens = storage.api_tokens().await.unwrap();
+    let ids: Vec<_> = tokens.iter().map(|token| token.id.as_str()).collect();
+    assert_eq!(ids, ["a-token", "b-token", "z-token"]);
+    assert_eq!(tokens[0].name, "Newer A");
+    assert_eq!(tokens[0].email, "a@example.com");
+    assert_eq!(tokens[0].created_at, "1970-01-01T00:03:20Z");
+    assert_eq!(tokens[2].created_at, "1970-01-01T00:01:40Z");
+    let serialized = serde_json::to_value(&tokens).unwrap();
+    for token in serialized.as_array().unwrap() {
+        assert!(token.get("hash").is_none());
+        assert!(token.get("token").is_none());
+    }
+
+    assert!(
+        storage
+            .create_api_token(
+                "duplicate",
+                "Duplicate hash",
+                "hash-a",
+                "other@example.com",
+                300,
+            )
+            .await
+            .is_err()
+    );
+    assert_eq!(
+        storage.api_token_owner("hash-a").await.unwrap(),
+        Some("a@example.com".into())
+    );
+    assert_eq!(storage.api_tokens().await.unwrap().len(), 3);
+
+    assert!(storage.revoke_api_token("a-token").await.unwrap());
+    assert_eq!(storage.api_token_owner("hash-a").await.unwrap(), None);
+    assert!(!storage.revoke_api_token("a-token").await.unwrap());
+    let tokens = storage.api_tokens().await.unwrap();
+    assert_eq!(tokens.len(), 2);
+    assert!(tokens.iter().all(|token| token.id != "a-token"));
+    assert_eq!(
+        storage.api_token_owner("hash-b").await.unwrap(),
+        Some("b@example.com".into())
+    );
 }

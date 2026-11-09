@@ -89,15 +89,18 @@ impl OAuth {
         &self.public_url
     }
 
-    pub async fn valid_access(&self, storage: &dyn Storage, token: &str, now: i64) -> bool {
+    pub async fn valid_access(
+        &self,
+        storage: &dyn Storage,
+        token: &str,
+        now: i64,
+    ) -> crate::error::Result<bool> {
         let owner = storage
             .token_owner(&token_hash(token), TokenKind::Access, now)
-            .await;
-        owner.is_ok_and(|owner| {
-            owner.is_some_and(|owner| {
-                owner.resource == format!("{}/mcp", self.public_url) && self.allows(&owner.email)
-            })
-        })
+            .await?;
+        Ok(owner.is_some_and(|owner| {
+            owner.resource == format!("{}/mcp", self.public_url) && self.allows(&owner.email)
+        }))
     }
 }
 
@@ -488,13 +491,13 @@ fn value<'a>(params: &'a [(String, String)], name: &str) -> Option<&'a str> {
         .map(|(_, value)| value.as_str())
 }
 
-fn random(size: usize) -> String {
+pub(crate) fn random(size: usize) -> String {
     let mut bytes = vec![0; size];
     getrandom::fill(&mut bytes).expect("cannot generate random bytes");
     URL_SAFE_NO_PAD.encode(bytes)
 }
 
-fn token_hash(token: &str) -> String {
+pub(crate) fn token_hash(token: &str) -> String {
     hex(&Sha256::digest(token.as_bytes()))
 }
 
