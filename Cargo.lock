@@ -1011,7 +1011,9 @@ version = "0.2.0"
 dependencies = [
  "async-trait",
  "axum",
+ "base64",
  "clap",
+ "getrandom 0.4.3",
  "hmac",
  "include_dir",
  "reqwest",
@@ -1022,6 +1024,7 @@ dependencies = [
  "subtle",
  "tokio",
  "toml",
+ "url",
 ]
 
 [[package]]
@@ -1186,6 +1189,7 @@ dependencies = [
  "rustls-platform-verifier",
  "serde",
  "serde_json",
+ "serde_urlencoded",
  "sync_wrapper",
  "tokio",
  "tokio-rustls",

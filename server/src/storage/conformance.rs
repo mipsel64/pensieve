@@ -1,6 +1,6 @@
 use std::time::{Duration, SystemTime};
 
-use super::{Change, HistoryFilter, Link, Storage};
+use super::{Change, HistoryFilter, Link, OAuthClient, OAuthToken, Storage, TokenKind, TokenOwner};
 use crate::error::Error;
 
 const T: Change = Change {
@@ -278,4 +278,323 @@ pub(crate) async fn check(storage: &dyn Storage) {
         storage.settings().await.unwrap().as_deref(),
         Some(r#"{"a":2}"#)
     );
+
+    check_oauth(storage).await;
+}
+
+async fn check_oauth(storage: &dyn Storage) {
+    assert_eq!(storage.secret("session", b"first").await.unwrap(), b"first");
+    assert_eq!(
+        storage.secret("session", b"later").await.unwrap(),
+        b"first",
+        "a later fresh value replaced the stable secret"
+    );
+
+    let stale = OAuthClient {
+        id: "stale-client".into(),
+        name: "Stale".into(),
+        redirect_uris: vec!["https://stale.example/cb".into()],
+        created_at: 10,
+    };
+    let client = OAuthClient {
+        id: "client".into(),
+        name: "Client".into(),
+        redirect_uris: vec!["https://client.example/cb".into()],
+        created_at: 10,
+    };
+    storage.register_client(&stale, 0).await.unwrap();
+    storage.register_client(&client, 0).await.unwrap();
+    storage
+        .create_grant(
+            "a-grant",
+            &client.id,
+            "user@example.com",
+            "https://pensieve.test/mcp",
+            &[
+                OAuthToken {
+                    hash: "a-access".into(),
+                    kind: TokenKind::Access,
+                    expires_at: 200,
+                },
+                OAuthToken {
+                    hash: "a-refresh".into(),
+                    kind: TokenKind::Refresh,
+                    expires_at: 10_000,
+                },
+            ],
+            100,
+        )
+        .await
+        .unwrap();
+    let fresh = OAuthClient {
+        id: "fresh-client".into(),
+        name: "Fresh".into(),
+        redirect_uris: vec!["https://fresh.example/cb".into()],
+        created_at: 200,
+    };
+    storage.register_client(&fresh, 50).await.unwrap();
+    assert_eq!(storage.client(&stale.id).await.unwrap(), None);
+    assert_eq!(
+        storage.client(&client.id).await.unwrap(),
+        Some(client.clone())
+    );
+    assert_eq!(storage.client(&fresh.id).await.unwrap(), Some(fresh));
+
+    let owner = TokenOwner {
+        grant_id: "a-grant".into(),
+        client_id: client.id.clone(),
+        email: "user@example.com".into(),
+        resource: "https://pensieve.test/mcp".into(),
+    };
+    assert_eq!(
+        storage
+            .token_owner("a-access", TokenKind::Access, 199)
+            .await
+            .unwrap(),
+        Some(owner.clone())
+    );
+    assert_eq!(
+        storage
+            .token_owner("a-access", TokenKind::Refresh, 199)
+            .await
+            .unwrap(),
+        None,
+        "a token was accepted under the wrong kind"
+    );
+    assert_eq!(
+        storage
+            .token_owner("a-access", TokenKind::Access, 200)
+            .await
+            .unwrap(),
+        None,
+        "a token remained valid at its expiry second"
+    );
+    assert_eq!(
+        storage
+            .token_owner("a-refresh", TokenKind::Refresh, 200)
+            .await
+            .unwrap(),
+        Some(owner.clone())
+    );
+
+    storage
+        .create_grant(
+            "b-grant",
+            &client.id,
+            "user@example.com",
+            "https://pensieve.test/mcp",
+            &[
+                OAuthToken {
+                    hash: "b-access".into(),
+                    kind: TokenKind::Access,
+                    expires_at: 10_000,
+                },
+                OAuthToken {
+                    hash: "b-old-refresh".into(),
+                    kind: TokenKind::Refresh,
+                    expires_at: 10_000,
+                },
+            ],
+            100,
+        )
+        .await
+        .unwrap();
+    let wrong_client_tokens = [OAuthToken {
+        hash: "wrong-client-new".into(),
+        kind: TokenKind::Access,
+        expires_at: 10_000,
+    }];
+    assert_eq!(
+        storage
+            .rotate_refresh("b-old-refresh", "another-client", &wrong_client_tokens, 150)
+            .await
+            .unwrap(),
+        None
+    );
+    assert!(
+        storage
+            .token_owner("b-old-refresh", TokenKind::Refresh, 150)
+            .await
+            .unwrap()
+            .is_some(),
+        "a failed rotation consumed the refresh token"
+    );
+    assert_eq!(
+        storage
+            .token_owner("wrong-client-new", TokenKind::Access, 150)
+            .await
+            .unwrap(),
+        None,
+        "a failed rotation inserted new tokens"
+    );
+
+    let rotated = storage
+        .rotate_refresh(
+            "b-old-refresh",
+            &client.id,
+            &[
+                OAuthToken {
+                    hash: "b-new-access".into(),
+                    kind: TokenKind::Access,
+                    expires_at: 10_000,
+                },
+                OAuthToken {
+                    hash: "b-new-refresh".into(),
+                    kind: TokenKind::Refresh,
+                    expires_at: 10_000,
+                },
+            ],
+            150,
+        )
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(rotated.grant_id, "b-grant");
+    assert_eq!(rotated.client_id, client.id);
+    assert_eq!(rotated.email, "user@example.com");
+    assert_eq!(rotated.resource, "https://pensieve.test/mcp");
+    assert_eq!(
+        storage
+            .token_owner("b-old-refresh", TokenKind::UsedRefresh, 150)
+            .await
+            .unwrap()
+            .map(|owner| owner.grant_id),
+        Some("b-grant".into())
+    );
+    assert_eq!(
+        storage
+            .token_owner("b-old-refresh", TokenKind::Refresh, 150)
+            .await
+            .unwrap(),
+        None
+    );
+    assert!(
+        storage
+            .token_owner("b-new-access", TokenKind::Access, 150)
+            .await
+            .unwrap()
+            .is_some()
+    );
+    assert!(
+        storage
+            .token_owner("b-new-refresh", TokenKind::Refresh, 150)
+            .await
+            .unwrap()
+            .is_some()
+    );
+
+    let replay_tokens = [OAuthToken {
+        hash: "replay-new".into(),
+        kind: TokenKind::Access,
+        expires_at: 10_000,
+    }];
+    assert_eq!(
+        storage
+            .rotate_refresh("b-old-refresh", &client.id, &replay_tokens, 151)
+            .await
+            .unwrap(),
+        None
+    );
+    assert_eq!(
+        storage
+            .token_owner("replay-new", TokenKind::Access, 151)
+            .await
+            .unwrap(),
+        None,
+        "a used refresh token inserted replacement tokens"
+    );
+    let grants = storage.grants().await.unwrap();
+    assert_eq!(
+        grants
+            .iter()
+            .find(|grant| grant.id == "b-grant")
+            .unwrap()
+            .refreshed_at,
+        "1970-01-01T00:02:30Z",
+        "a failed replay changed refreshed_at"
+    );
+
+    storage
+        .create_grant(
+            "purge-grant",
+            &client.id,
+            "user@example.com",
+            "https://pensieve.test/mcp",
+            &[
+                OAuthToken {
+                    hash: "purge-access".into(),
+                    kind: TokenKind::Access,
+                    expires_at: 200,
+                },
+                OAuthToken {
+                    hash: "purge-used-refresh".into(),
+                    kind: TokenKind::UsedRefresh,
+                    expires_at: 10_000,
+                },
+            ],
+            100,
+        )
+        .await
+        .unwrap();
+    assert!(
+        storage
+            .token_owner("purge-used-refresh", TokenKind::UsedRefresh, 100)
+            .await
+            .unwrap()
+            .is_some()
+    );
+    storage
+        .create_grant(
+            "c-grant",
+            &client.id,
+            "user@example.com",
+            "https://pensieve.test/mcp",
+            &[
+                OAuthToken {
+                    hash: "c-access".into(),
+                    kind: TokenKind::Access,
+                    expires_at: 10_000,
+                },
+                OAuthToken {
+                    hash: "c-refresh".into(),
+                    kind: TokenKind::Refresh,
+                    expires_at: 10_000,
+                },
+            ],
+            200,
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        storage
+            .token_owner("purge-used-refresh", TokenKind::UsedRefresh, 100)
+            .await
+            .unwrap(),
+        None,
+        "the purge kept a grant with only a used refresh token"
+    );
+
+    let grants = storage.grants().await.unwrap();
+    let ids: Vec<_> = grants.iter().map(|grant| grant.id.as_str()).collect();
+    assert_eq!(ids, ["c-grant", "a-grant", "b-grant"]);
+    assert_eq!(grants[0].client_name, "Client");
+    assert_eq!(grants[0].email, "user@example.com");
+    assert_eq!(grants[0].created_at, "1970-01-01T00:03:20Z");
+    assert_eq!(grants[0].refreshed_at, "1970-01-01T00:03:20Z");
+    assert_eq!(grants[1].created_at, "1970-01-01T00:01:40Z");
+    assert_eq!(grants[2].created_at, "1970-01-01T00:01:40Z");
+
+    assert!(storage.revoke_grant("b-grant").await.unwrap());
+    for (hash, kind) in [
+        ("b-old-refresh", TokenKind::UsedRefresh),
+        ("b-new-access", TokenKind::Access),
+        ("b-new-refresh", TokenKind::Refresh),
+    ] {
+        assert_eq!(
+            storage.token_owner(hash, kind, 150).await.unwrap(),
+            None,
+            "revoking a grant left {hash} usable"
+        );
+    }
+    assert!(!storage.revoke_grant("b-grant").await.unwrap());
 }

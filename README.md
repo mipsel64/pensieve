@@ -56,8 +56,13 @@ On first run, `make setup` creates `~/.config/pensieve/config.toml` (mode 0600) 
 
 | Setting | Env override | Default | |
 |---|---|---|---|
-| `server.token` | `PENSIEVE_TOKEN` | generated | Bearer token for the API and web UI (at least 16 characters) |
+| `server.token` | `PENSIEVE_TOKEN` | generated | Bearer token for the API and web UI (at least 16 characters in `token` or `both` mode) |
 | `server.listen` | `PENSIEVE_LISTEN` | `127.0.0.1:7878` | |
+| `server.auth` | `PENSIEVE_AUTH` | `token` | `token`, `oauth` or `both` |
+| `oauth.public_url` | `PENSIEVE_PUBLIC_URL` | unset | Public server URL. Required with OAuth |
+| `oauth.google_client_id` | `PENSIEVE_GOOGLE_CLIENT_ID` | unset | Google Web application client ID |
+| `oauth.google_client_secret` | `PENSIEVE_GOOGLE_CLIENT_SECRET` | unset | Google Web application client secret |
+| `oauth.allowed_emails` | `PENSIEVE_ALLOWED_EMAILS` | unset | Allowed Google emails. The environment value is comma-separated |
 | `storage.path` | `PENSIEVE_DB` | `~/.local/share/pensieve/pensieve.db` | SQLite file. Relative paths are resolved against the config file's directory |
 | `jev.key` | `PENSIEVE_JEV_KEY` | unset (BM25 only) | Key for the chosen provider |
 | `jev.provider` | `PENSIEVE_JEV_PROVIDER` | `vercel` | `vercel`, `typesafe`, `openrouter` or `opencode` |
@@ -74,11 +79,19 @@ Import an existing wiki once with `pensieve import ~/vaults/wiki`; it skips `ind
 
 New backends implement `storage::Storage` and must pass `storage::conformance::check`. New rerankers implement `rerank::Reranker`.
 
+## Sign-in
+
+`server.auth = "token"` uses the shared server token. `"oauth"` uses Google sign-in and MCP OAuth tokens. `"both"` enables both methods. OAuth tokens work only at `/mcp`. Scripts that call `/api` with a bearer token need the server token, so use `both` for those scripts.
+
+For Google sign-in, create a Google OAuth client of type **Web application**. Add `P/auth/callback` as an authorized redirect URI. `P` is `oauth.public_url`, normally the Tailscale Serve URL such as `https://my-server.tailnet.ts.net`. Set the client ID, client secret and `oauth.allowed_emails`. Only those exact email addresses can sign in.
+
+A database leak is a full compromise. To end every session and grant after a leak, stop the server, run `sqlite3 <db> "DELETE FROM secrets WHERE name = 'session'; DELETE FROM oauth_grants;"`, then restart.
+
 ## Web UI
 
-Open the server's URL and sign in with the server token. The UI opens on search (an answer built from the passages `recall` gives an agent, or pages ranked by keyword), and has a dashboard, the link graph, a timeline of writes, the journal (each day's session summaries beside the `Scratchpad`, read-only like the rest of the UI), activity by day, agent and type, and settings. Pages open in a side panel or as a full page, and every view has its own link. Press `/` to search. Appearance (System, Light or Dark) is saved per browser, `Cmd`/`Ctrl`+`K` opens the command palette, and `?` lists the keyboard shortcuts.
+Open the server's URL and sign in with Google, the server token, or either method in `both` mode. The UI opens on search (an answer built from the passages `recall` gives an agent, or pages ranked by keyword), and has a dashboard, the link graph, a timeline of writes, the journal (each day's session summaries beside the `Scratchpad`, read-only like the rest of the UI), activity by day, agent and type, and settings. Pages open in a side panel or as a full page, and every view has its own link. Press `/` to search. Appearance (System, Light or Dark) is saved per browser, `Cmd`/`Ctrl`+`K` opens the command palette, and `?` lists the keyboard shortcuts.
 
-Signing in sets a signed session cookie that lasts 30 days and can only read: writes still need the bearer token, so no web page can change memory through the browser. Signing out clears the cookie in that browser; rotating `server.token` ends every session. The one exception is `PUT /api/settings`: UI settings (accent, search defaults, graph filters and forces) are a JSON object of at most 16 KiB stored in the database, so every browser shares them, and a signed-in browser can save them. Tailscale Serve sends `X-Forwarded-Proto: https`, which marks the cookie `Secure`; other HTTPS proxies must send it too.
+Signing in sets a signed, `SameSite=Lax` session cookie that lasts 30 days and can only read memory: page writes still need the bearer token, so no web page can change memory through the browser. The cookie also allows UI settings and Connected apps changes. Signing out clears the cookie in that browser. Rotating `server.token` ends token sessions. Removing an email from `oauth.allowed_emails` ends that account's access. The UI settings exception is `PUT /api/settings`: UI settings (accent, search defaults, graph filters and forces) are a JSON object of at most 16 KiB stored in the database, so every browser shares them. Tailscale Serve sends `X-Forwarded-Proto: https`, which marks the cookie `Secure`; other HTTPS proxies must send it too.
 
 ## Docker
 
@@ -139,6 +152,36 @@ Pensieve is my shared memory. At the start of a session, read its guide with `mc
 ```
 
 Or install [pi-pensieve](https://github.com/mipsel64/pi-pensieve), which reads the same `mcp.json` entry, adds the instructions, the open `Scratchpad` items and recent journal entries to Pi's system prompt, and appends a summary of each session to that day's `Journal YYYY-MM-DD` page when Pi quits.
+
+With `server.auth = "oauth"` or `"both"`, agents can use MCP OAuth instead of an Authorization header. Pensieve opens Google sign-in and asks for consent.
+
+Claude Code:
+
+```sh
+claude mcp add --transport http pensieve https://my-server.tailnet.ts.net/mcp \
+  -H "X-Pensieve-Agent: claude-code@$(hostname -s)"
+```
+
+Codex, after configuring the Pensieve URL without `bearer_token_env_var`:
+
+```sh
+codex mcp login pensieve
+```
+
+Pi uses the same URL and headers, with OAuth enabled:
+
+```json
+{
+  "mcpServers": {
+    "pensieve": {
+      "url": "https://my-server.tailnet.ts.net/mcp",
+      "auth": "oauth",
+      "headers": { "X-Pensieve-Agent": "pi" },
+      "directTools": true
+    }
+  }
+}
+```
 
 Tools:
 

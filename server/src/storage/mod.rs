@@ -15,6 +15,58 @@ use crate::{
     markdown::{self, KINDS, Section},
 };
 
+#[derive(Clone, Debug, PartialEq)]
+pub struct OAuthClient {
+    pub id: String,
+    pub name: String,
+    pub redirect_uris: Vec<String>,
+    pub created_at: i64,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TokenKind {
+    Access,
+    Refresh,
+    /// An exchanged refresh token, kept until it expires so a replay can be detected.
+    UsedRefresh,
+}
+
+impl TokenKind {
+    pub(crate) fn as_str(self) -> &'static str {
+        match self {
+            Self::Access => "access",
+            Self::Refresh => "refresh",
+            Self::UsedRefresh => "used_refresh",
+        }
+    }
+}
+
+/// Stores only the token's SHA-256 as lowercase hex, never the token.
+#[derive(Clone, Debug, PartialEq)]
+pub struct OAuthToken {
+    pub hash: String,
+    pub kind: TokenKind,
+    pub expires_at: i64,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct TokenOwner {
+    pub grant_id: String,
+    pub client_id: String,
+    pub email: String,
+    pub resource: String,
+}
+
+/// Times are ISO 8601 UTC, like page times.
+#[derive(Serialize, Clone, Debug, PartialEq)]
+pub struct Grant {
+    pub id: String,
+    pub client_name: String,
+    pub email: String,
+    pub created_at: String,
+    pub refreshed_at: String,
+}
+
 /// Page store behind the API. Titles are case-insensitive; pages link to each other with `[[Title]]`.
 /// New backends implement the required methods and pass [`conformance::check`].
 #[async_trait]
@@ -59,6 +111,51 @@ pub trait Storage: Send + Sync {
     async fn settings(&self) -> Result<Option<String>>;
 
     async fn save_settings(&self, json: &str) -> Result<()>;
+
+    /// The secret named `name`, storing `fresh` first when there is none.
+    async fn secret(&self, name: &str, fresh: &[u8]) -> Result<Vec<u8>>;
+
+    /// Saves `client`, first deleting clients created before `stale_before` that have no grants.
+    async fn register_client(&self, client: &OAuthClient, stale_before: i64) -> Result<()>;
+
+    async fn client(&self, id: &str) -> Result<Option<OAuthClient>>;
+
+    /// Creates a grant with `tokens` in one transaction, then deletes expired tokens
+    /// (`expires_at <= now`) and grants left without an access or refresh token.
+    async fn create_grant(
+        &self,
+        id: &str,
+        client_id: &str,
+        email: &str,
+        resource: &str,
+        tokens: &[OAuthToken],
+        now: i64,
+    ) -> Result<()>;
+
+    /// The owner of the unexpired token with this hash and kind.
+    async fn token_owner(
+        &self,
+        hash: &str,
+        kind: TokenKind,
+        now: i64,
+    ) -> Result<Option<TokenOwner>>;
+
+    /// In one transaction, marks the unexpired refresh token `old_hash` of `client_id` as used,
+    /// adds `tokens` to its grant and purges as `create_grant` does. `None`, changing nothing,
+    /// when there is no such token.
+    async fn rotate_refresh(
+        &self,
+        old_hash: &str,
+        client_id: &str,
+        tokens: &[OAuthToken],
+        now: i64,
+    ) -> Result<Option<TokenOwner>>;
+
+    /// Every grant, newest first, then by id.
+    async fn grants(&self) -> Result<Vec<Grant>>;
+
+    /// Deletes a grant and its tokens; false when it doesn't exist.
+    async fn revoke_grant(&self, id: &str) -> Result<bool>;
 
     /// Validates and writes a page, returning its rev.
     async fn put(

@@ -7,14 +7,20 @@ license.workspace = true
 [dependencies]
 async-trait = "0.1"
 axum = "0.8"
+base64 = "0.23"
+getrandom = "0.4"
 include_dir = "0.7"
 clap = { version = "4", features = ["derive", "env"] }
 hmac = "0.13"
-reqwest = { version = "0.13", features = ["json"] }
+reqwest = { version = "0.13", features = ["form", "json"] }
 rusqlite = { version = "0.40", features = ["bundled"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sha2 = "0.11"
 subtle = "2"
 toml = "1"
+url = "2"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "signal"] }
+
+[dev-dependencies]
+reqwest = { version = "0.13", features = ["query"] }

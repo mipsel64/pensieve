@@ -3,7 +3,7 @@ import { Eye, EyeOff, Loader2 } from 'lucide-react';
 import { login, Unauthorized } from './api.js';
 import { Logo } from './ui.jsx';
 
-export function Login({ onSuccess }) {
+export function Login({ methods, onSuccess }) {
   const [token, setToken] = useState('');
   const [visible, setVisible] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -24,39 +24,49 @@ export function Login({ onSuccess }) {
 
   return (
     <main className="login">
-      <form className="login-card" onSubmit={submit} noValidate>
+      <div className="login-card">
         <div className="login-brand">
           <Logo size={40} />
           <h1>Pensieve</h1>
           <p className="muted">Shared memory for your agents</p>
         </div>
-        <label htmlFor="token">Server token</label>
-        <div className={`field${error ? ' invalid' : ''}`}>
-          <input
-            id="token"
-            type={visible ? 'text' : 'password'}
-            autoComplete="current-password"
-            spellCheck="false"
-            autoFocus
-            value={token}
-            onChange={(e) => setToken(e.target.value)}
-            aria-invalid={Boolean(error)}
-            aria-describedby={error ? 'token-error' : undefined}
-          />
-          <button type="button" className="icon-button" onClick={() => setVisible((v) => !v)} aria-label={visible ? 'Hide token' : 'Show token'}>
-            {visible ? <EyeOff size={18} aria-hidden="true" /> : <Eye size={18} aria-hidden="true" />}
-          </button>
-        </div>
-        {error && (
-          <p id="token-error" className="field-error" role="alert">
-            {error}
-          </p>
+        {methods.includes('google') && (
+          <a className="primary google-login" href="/auth/login">
+            Sign in with Google
+          </a>
         )}
-        <button className="primary" disabled={busy || !token.trim()}>
-          {busy && <Loader2 className="spin" size={16} aria-hidden="true" />}
-          {busy ? 'Signing in' : 'Sign in'}
-        </button>
-      </form>
+        {methods.includes('google') && methods.includes('token') && <div className="login-divider">or</div>}
+        {methods.includes('token') && (
+          <form className="login-form" onSubmit={submit} noValidate>
+            <label htmlFor="token">Server token</label>
+            <div className={`field${error ? ' invalid' : ''}`}>
+              <input
+                id="token"
+                type={visible ? 'text' : 'password'}
+                autoComplete="current-password"
+                spellCheck="false"
+                autoFocus
+                value={token}
+                onChange={(e) => setToken(e.target.value)}
+                aria-invalid={Boolean(error)}
+                aria-describedby={error ? 'token-error' : undefined}
+              />
+              <button type="button" className="icon-button" onClick={() => setVisible((v) => !v)} aria-label={visible ? 'Hide token' : 'Show token'}>
+                {visible ? <EyeOff size={18} aria-hidden="true" /> : <Eye size={18} aria-hidden="true" />}
+              </button>
+            </div>
+            {error && (
+              <p id="token-error" className="field-error" role="alert">
+                {error}
+              </p>
+            )}
+            <button className="primary" disabled={busy || !token.trim()}>
+              {busy && <Loader2 className="spin" size={16} aria-hidden="true" />}
+              {busy ? 'Signing in' : 'Sign in'}
+            </button>
+          </form>
+        )}
+      </div>
     </main>
   );
 }

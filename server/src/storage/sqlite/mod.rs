@@ -9,8 +9,8 @@ use async_trait::async_trait;
 use rusqlite::{Connection, OptionalExtension, Row, params};
 
 use super::{
-    Author, Count, Draft, Edge, Graph, HistoryFilter, Hit, Link, Node, Page, Passage, Revision,
-    Stale, Stats, Storage, Visit,
+    Author, Count, Draft, Edge, Grant, Graph, HistoryFilter, Hit, Link, Node, OAuthClient,
+    OAuthToken, Page, Passage, Revision, Stale, Stats, Storage, TokenKind, TokenOwner, Visit,
 };
 use crate::{
     error::{Error, Result},
@@ -135,12 +135,270 @@ impl Storage for SqliteStorage {
         })
         .await
     }
+
+    async fn secret(&self, name: &str, fresh: &[u8]) -> Result<Vec<u8>> {
+        let name = name.to_owned();
+        let fresh = fresh.to_vec();
+        self.run(move |conn| secret(conn, &name, &fresh)).await
+    }
+
+    async fn register_client(&self, client: &OAuthClient, stale_before: i64) -> Result<()> {
+        let client = client.clone();
+        self.run(move |conn| register_client(conn, &client, stale_before))
+            .await
+    }
+
+    async fn client(&self, id: &str) -> Result<Option<OAuthClient>> {
+        let id = id.to_owned();
+        self.run(move |conn| client(conn, &id)).await
+    }
+
+    async fn create_grant(
+        &self,
+        id: &str,
+        client_id: &str,
+        email: &str,
+        resource: &str,
+        tokens: &[OAuthToken],
+        now: i64,
+    ) -> Result<()> {
+        let id = id.to_owned();
+        let client_id = client_id.to_owned();
+        let email = email.to_owned();
+        let resource = resource.to_owned();
+        let tokens = tokens.to_vec();
+        self.run(move |conn| create_grant(conn, &id, &client_id, &email, &resource, &tokens, now))
+            .await
+    }
+
+    async fn token_owner(
+        &self,
+        hash: &str,
+        kind: TokenKind,
+        now: i64,
+    ) -> Result<Option<TokenOwner>> {
+        let hash = hash.to_owned();
+        self.run(move |conn| token_owner(conn, &hash, kind, now))
+            .await
+    }
+
+    async fn rotate_refresh(
+        &self,
+        old_hash: &str,
+        client_id: &str,
+        tokens: &[OAuthToken],
+        now: i64,
+    ) -> Result<Option<TokenOwner>> {
+        let old_hash = old_hash.to_owned();
+        let client_id = client_id.to_owned();
+        let tokens = tokens.to_vec();
+        self.run(move |conn| rotate_refresh(conn, &old_hash, &client_id, &tokens, now))
+            .await
+    }
+
+    async fn grants(&self) -> Result<Vec<Grant>> {
+        self.run(grants).await
+    }
+
+    async fn revoke_grant(&self, id: &str) -> Result<bool> {
+        let id = id.to_owned();
+        self.run(move |conn| revoke_grant(conn, &id)).await
+    }
 }
 
 impl From<rusqlite::Error> for Error {
     fn from(source: rusqlite::Error) -> Self {
         Self::storage(source)
     }
+}
+
+fn secret(conn: &mut Connection, name: &str, fresh: &[u8]) -> Result<Vec<u8>> {
+    let tx = conn.transaction()?;
+    tx.execute(
+        "INSERT OR IGNORE INTO secrets (name, value) VALUES (?1, ?2)",
+        params![name, fresh],
+    )?;
+    let value = tx.query_row("SELECT value FROM secrets WHERE name = ?1", [name], |r| {
+        r.get(0)
+    })?;
+    tx.commit()?;
+    Ok(value)
+}
+
+fn register_client(conn: &mut Connection, client: &OAuthClient, stale_before: i64) -> Result<()> {
+    let tx = conn.transaction()?;
+    tx.execute(
+        "DELETE FROM oauth_clients WHERE created_at < ?1
+         AND NOT EXISTS (SELECT 1 FROM oauth_grants g WHERE g.client_id = oauth_clients.id)",
+        [stale_before],
+    )?;
+    let redirect_uris = serde_json::to_string(&client.redirect_uris).map_err(Error::storage)?;
+    tx.execute(
+        "INSERT INTO oauth_clients (id, name, redirect_uris, created_at) VALUES (?1, ?2, ?3, ?4)",
+        params![client.id, client.name, redirect_uris, client.created_at],
+    )?;
+    tx.commit()?;
+    Ok(())
+}
+
+fn client(conn: &Connection, id: &str) -> Result<Option<OAuthClient>> {
+    let row = conn
+        .query_row(
+            "SELECT id, name, redirect_uris, created_at FROM oauth_clients WHERE id = ?1",
+            [id],
+            |r| {
+                Ok((
+                    r.get::<_, String>(0)?,
+                    r.get::<_, String>(1)?,
+                    r.get::<_, String>(2)?,
+                    r.get::<_, i64>(3)?,
+                ))
+            },
+        )
+        .optional()?;
+    row.map(|(id, name, redirect_uris, created_at)| {
+        let redirect_uris = serde_json::from_str(&redirect_uris).map_err(Error::storage)?;
+        Ok(OAuthClient {
+            id,
+            name,
+            redirect_uris,
+            created_at,
+        })
+    })
+    .transpose()
+}
+
+#[allow(clippy::too_many_arguments)]
+fn create_grant(
+    conn: &mut Connection,
+    id: &str,
+    client_id: &str,
+    email: &str,
+    resource: &str,
+    tokens: &[OAuthToken],
+    now: i64,
+) -> Result<()> {
+    let tx = conn.transaction()?;
+    tx.execute(
+        "INSERT INTO oauth_grants (id, client_id, email, resource, created_at, refreshed_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?5)",
+        params![id, client_id, email, resource, now],
+    )?;
+    insert_tokens(&tx, id, tokens)?;
+    purge_grants(&tx, now)?;
+    tx.commit()?;
+    Ok(())
+}
+
+fn token_owner(
+    conn: &Connection,
+    hash: &str,
+    kind: TokenKind,
+    now: i64,
+) -> Result<Option<TokenOwner>> {
+    Ok(conn
+        .query_row(
+            "SELECT g.id, g.client_id, g.email, g.resource FROM oauth_tokens t
+             JOIN oauth_grants g ON g.id = t.grant_id
+             WHERE t.hash = ?1 AND t.kind = ?2 AND t.expires_at > ?3",
+            params![hash, kind.as_str(), now],
+            token_owner_row,
+        )
+        .optional()?)
+}
+
+fn token_owner_row(r: &Row<'_>) -> rusqlite::Result<TokenOwner> {
+    Ok(TokenOwner {
+        grant_id: r.get(0)?,
+        client_id: r.get(1)?,
+        email: r.get(2)?,
+        resource: r.get(3)?,
+    })
+}
+
+fn rotate_refresh(
+    conn: &mut Connection,
+    old_hash: &str,
+    client_id: &str,
+    tokens: &[OAuthToken],
+    now: i64,
+) -> Result<Option<TokenOwner>> {
+    let tx = conn.transaction()?;
+    let owner = tx
+        .query_row(
+            "SELECT g.id, g.client_id, g.email, g.resource FROM oauth_tokens t
+             JOIN oauth_grants g ON g.id = t.grant_id
+             WHERE t.hash = ?1 AND t.kind = 'refresh' AND t.expires_at > ?2 AND g.client_id = ?3",
+            params![old_hash, now, client_id],
+            token_owner_row,
+        )
+        .optional()?;
+    let Some(owner) = owner else {
+        return Ok(None);
+    };
+    tx.execute(
+        "UPDATE oauth_tokens SET kind = 'used_refresh' WHERE hash = ?1",
+        [old_hash],
+    )?;
+    insert_tokens(&tx, &owner.grant_id, tokens)?;
+    tx.execute(
+        "UPDATE oauth_grants SET refreshed_at = ?2 WHERE id = ?1",
+        params![owner.grant_id, now],
+    )?;
+    purge_grants(&tx, now)?;
+    tx.commit()?;
+    Ok(Some(owner))
+}
+
+fn insert_tokens(conn: &Connection, grant_id: &str, tokens: &[OAuthToken]) -> Result<()> {
+    let mut insert = conn.prepare_cached(
+        "INSERT INTO oauth_tokens (hash, grant_id, kind, expires_at) VALUES (?1, ?2, ?3, ?4)",
+    )?;
+    for token in tokens {
+        insert.execute(params![
+            token.hash,
+            grant_id,
+            token.kind.as_str(),
+            token.expires_at
+        ])?;
+    }
+    Ok(())
+}
+
+fn purge_grants(conn: &Connection, now: i64) -> Result<()> {
+    conn.execute("DELETE FROM oauth_tokens WHERE expires_at <= ?1", [now])?;
+    conn.execute(
+        "DELETE FROM oauth_grants WHERE NOT EXISTS (
+             SELECT 1 FROM oauth_tokens t WHERE t.grant_id = oauth_grants.id
+             AND t.kind IN ('access', 'refresh'))",
+        [],
+    )?;
+    Ok(())
+}
+
+fn grants(conn: &mut Connection) -> Result<Vec<Grant>> {
+    Ok(conn
+        .prepare(
+            "SELECT g.id, c.name, g.email,
+                    strftime('%Y-%m-%dT%H:%M:%SZ', g.created_at, 'unixepoch'),
+                    strftime('%Y-%m-%dT%H:%M:%SZ', g.refreshed_at, 'unixepoch')
+             FROM oauth_grants g JOIN oauth_clients c ON c.id = g.client_id
+             ORDER BY g.created_at DESC, g.id ASC",
+        )?
+        .query_map([], |r| {
+            Ok(Grant {
+                id: r.get(0)?,
+                client_name: r.get(1)?,
+                email: r.get(2)?,
+                created_at: r.get(3)?,
+                refreshed_at: r.get(4)?,
+            })
+        })?
+        .collect::<rusqlite::Result<_>>()?)
+}
+
+fn revoke_grant(conn: &Connection, id: &str) -> Result<bool> {
+    Ok(conn.execute("DELETE FROM oauth_grants WHERE id = ?1", [id])? > 0)
 }
 
 fn migrate(conn: &mut Connection) -> Result<()> {

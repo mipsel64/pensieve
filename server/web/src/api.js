@@ -14,6 +14,7 @@ export async function api(path, { method = 'GET', body, keepalive } = {}) {
 
 export const login = (token) => api('/login', { method: 'POST', body: { token } });
 export const logout = () => api('/logout', { method: 'POST' });
+export const authMethods = () => api('/auth');
 
 export function query(params) {
   const entries = Object.entries(params).filter(([, v]) => v !== undefined && v !== null && v !== '');

@@ -74,3 +74,15 @@ END;
 CREATE TRIGGER IF NOT EXISTS sections_ad AFTER DELETE ON sections BEGIN
     INSERT INTO sections_fts (sections_fts, rowid, title, heading, body) VALUES ('delete', old.id, old.title, old.heading, old.body);
 END;
+
+CREATE TABLE IF NOT EXISTS secrets (name TEXT PRIMARY KEY, value BLOB NOT NULL);
+CREATE TABLE IF NOT EXISTS oauth_clients (
+    id TEXT PRIMARY KEY, name TEXT NOT NULL, redirect_uris TEXT NOT NULL, created_at INTEGER NOT NULL);
+CREATE TABLE IF NOT EXISTS oauth_grants (
+    id TEXT PRIMARY KEY, client_id TEXT NOT NULL REFERENCES oauth_clients (id) ON DELETE CASCADE,
+    email TEXT NOT NULL, resource TEXT NOT NULL, created_at INTEGER NOT NULL, refreshed_at INTEGER NOT NULL);
+CREATE INDEX IF NOT EXISTS oauth_grants_client ON oauth_grants (client_id);
+CREATE TABLE IF NOT EXISTS oauth_tokens (
+    hash TEXT PRIMARY KEY, grant_id TEXT NOT NULL REFERENCES oauth_grants (id) ON DELETE CASCADE,
+    kind TEXT NOT NULL CHECK (kind IN ('access', 'refresh', 'used_refresh')), expires_at INTEGER NOT NULL);
+CREATE INDEX IF NOT EXISTS oauth_tokens_grant ON oauth_tokens (grant_id);

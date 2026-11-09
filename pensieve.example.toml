@@ -1,13 +1,28 @@
 # Copy to ~/.config/pensieve/config.toml, or select another file with --config / -c
 # (or PENSIEVE_CONFIG). `make setup` creates it with a random token. Restart after editing.
-# PENSIEVE_LISTEN, PENSIEVE_TOKEN, PENSIEVE_DB, PENSIEVE_JEV_KEY and PENSIEVE_JEV_PROVIDER
-# override the matching settings; empty values are ignored.
+# PENSIEVE_LISTEN, PENSIEVE_AUTH, PENSIEVE_TOKEN, PENSIEVE_DB, PENSIEVE_JEV_KEY,
+# PENSIEVE_JEV_PROVIDER, PENSIEVE_PUBLIC_URL, PENSIEVE_GOOGLE_CLIENT_ID,
+# PENSIEVE_GOOGLE_CLIENT_SECRET and PENSIEVE_ALLOWED_EMAILS override the matching settings;
+# empty values are ignored. PENSIEVE_ALLOWED_EMAILS is a comma-separated list.
 
 [server]
 # Keep loopback; publish to other devices with `tailscale serve --bg 7878`.
 listen = "127.0.0.1:7878"
-# Bearer token for the API, the web UI and every MCP client. At least 16 characters.
+# token (default), oauth or both.
+auth = "token"
+# Bearer token for the API, the web UI and MCP clients. Required in token or both mode.
+# At least 16 characters. Ignored in oauth mode.
 token = ""
+
+# Google sign-in for browsers and MCP OAuth clients. Set auth = "oauth" or "both".
+# In Google Cloud Console, create an OAuth client of type Web application.
+# Add <public_url>/auth/callback as an authorized redirect URI.
+# Use the Tailscale Serve URL as public_url, without a trailing path.
+# [oauth]
+# public_url = "https://my-server.tailnet.ts.net"
+# google_client_id = "…apps.googleusercontent.com"
+# google_client_secret = "…"
+# allowed_emails = ["me@example.com"]
 
 [storage]
 # SQLite database file. Relative paths are resolved against this file's directory.
