@@ -756,6 +756,16 @@ async fn auth_modes_mount_only_their_routes_and_accept_only_their_credentials() 
     let session = google_sign_in(&both).await;
     let grant = issue_tokens(&both, &session, "Both modes").await;
     assert_eq!(
+        both.http
+            .get(both.url("/api/grants"))
+            .bearer_auth(SERVER_TOKEN)
+            .send()
+            .await
+            .unwrap()
+            .status(),
+        StatusCode::OK
+    );
+    assert_eq!(
         both.mcp(Some(&grant.access_token), tools_list())
             .await
             .status(),
@@ -1560,7 +1570,7 @@ async fn token_requests_validate_client_authentication_and_form_encoding() {
 }
 
 #[tokio::test]
-async fn access_tokens_write_only_through_mcp_and_expire() {
+async fn access_tokens_authenticate_mcp_and_api_data_routes_and_expire() {
     let server = TestServer::spawn(AuthMode::OAuth).await;
     let session = google_sign_in(&server).await;
     let grant = issue_tokens(&server, &session, "MCP client").await;
@@ -1607,12 +1617,41 @@ async fn access_tokens_write_only_through_mcp_and_expire() {
             .contains("OAuth access token wrote this page."),
         "{body}"
     );
+    let response = server
+        .http
+        .put(server.url("/api/pages/X"))
+        .bearer_auth(&grant.access_token)
+        .json(&json!({"content": "Written by an OAuth access token."}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let response = server
+        .http
+        .get(server.url("/api/pages/X?visit=false"))
+        .bearer_auth(&grant.access_token)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let page: Value = response.json().await.unwrap();
+    assert_eq!(page["content"], "Written by an OAuth access token.");
     assert_eq!(
         server
             .http
-            .put(server.url("/api/pages/X"))
+            .get(server.url("/api/recall?q=OAuth&budget=100"))
             .bearer_auth(&grant.access_token)
-            .json(&json!({"content": "must not be written"}))
+            .send()
+            .await
+            .unwrap()
+            .status(),
+        StatusCode::OK
+    );
+    assert_eq!(
+        server
+            .http
+            .get(server.url("/api/pages/X?visit=false"))
+            .bearer_auth(&grant.refresh_token)
             .send()
             .await
             .unwrap()
@@ -1640,6 +1679,18 @@ async fn access_tokens_write_only_through_mcp_and_expire() {
             .await
             .status(),
         StatusCode::UNAUTHORIZED
+    );
+    assert_eq!(
+        server
+            .http
+            .get(server.url("/api/pages/X?visit=false"))
+            .bearer_auth(&grant.access_token)
+            .send()
+            .await
+            .unwrap()
+            .status(),
+        StatusCode::UNAUTHORIZED,
+        "an access token must be invalid at its exact expiry"
     );
 }
 
@@ -1796,6 +1847,17 @@ async fn refresh_checks_client_resource_allowlist_and_current_public_url() {
             .status(),
         StatusCode::UNAUTHORIZED
     );
+    assert_eq!(
+        restarted
+            .http
+            .get(restarted.url("/api/pages/X?visit=false"))
+            .bearer_auth(&removed_grant.access_token)
+            .send()
+            .await
+            .unwrap()
+            .status(),
+        StatusCode::UNAUTHORIZED
+    );
 
     let original = TestServer::spawn(AuthMode::OAuth).await;
     let original_session = google_sign_in(&original).await;
@@ -1819,6 +1881,17 @@ async fn refresh_checks_client_resource_allowlist_and_current_public_url() {
         moved
             .mcp(Some(&original_grant.access_token), tools_list())
             .await
+            .status(),
+        StatusCode::UNAUTHORIZED
+    );
+    assert_eq!(
+        moved
+            .http
+            .get(moved.url("/api/pages/X?visit=false"))
+            .bearer_auth(&original_grant.access_token)
+            .send()
+            .await
+            .unwrap()
             .status(),
         StatusCode::UNAUTHORIZED
     );
@@ -1847,6 +1920,58 @@ async fn connected_apps_list_and_revoke_grants() {
     assert_eq!(listed["email"], EMAIL);
     let id = listed["id"].as_str().unwrap();
 
+    assert_eq!(
+        server
+            .http
+            .get(server.url("/api/grants"))
+            .bearer_auth(&grant.access_token)
+            .send()
+            .await
+            .unwrap()
+            .status(),
+        StatusCode::UNAUTHORIZED
+    );
+    assert_eq!(
+        server
+            .http
+            .put(server.url("/api/settings"))
+            .bearer_auth(&grant.access_token)
+            .json(&json!({"theme": "dark"}))
+            .send()
+            .await
+            .unwrap()
+            .status(),
+        StatusCode::UNAUTHORIZED
+    );
+    assert_eq!(
+        server
+            .http
+            .delete(server.url(&format!("/api/grants/{id}")))
+            .bearer_auth(&grant.access_token)
+            .send()
+            .await
+            .unwrap()
+            .status(),
+        StatusCode::UNAUTHORIZED
+    );
+    let response = server
+        .http
+        .get(server.url("/api/grants"))
+        .header(header::COOKIE, &session)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let grants: Value = response.json().await.unwrap();
+    assert!(
+        grants
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|listed| listed["id"] == id),
+        "an OAuth bearer must not revoke the grant"
+    );
+
     let response = server
         .http
         .delete(server.url(&format!("/api/grants/{id}")))
@@ -1860,6 +1985,30 @@ async fn connected_apps_list_and_revoke_grants() {
         server
             .mcp(Some(&grant.access_token), tools_list())
             .await
+            .status(),
+        StatusCode::UNAUTHORIZED
+    );
+    assert_eq!(
+        server
+            .http
+            .get(server.url("/api/grants"))
+            .header(header::COOKIE, &session)
+            .send()
+            .await
+            .unwrap()
+            .json::<Value>()
+            .await
+            .unwrap(),
+        json!([])
+    );
+    assert_eq!(
+        server
+            .http
+            .get(server.url("/api/pages/X?visit=false"))
+            .bearer_auth(&grant.access_token)
+            .send()
+            .await
+            .unwrap()
             .status(),
         StatusCode::UNAUTHORIZED
     );
@@ -1897,6 +2046,17 @@ async fn api_tokens_create_authenticate_list_and_revoke() {
     let id = created["id"].as_str().unwrap();
     let token = created["token"].as_str().unwrap();
     assert!(token.starts_with("pensieve_pat_"));
+    assert_eq!(
+        server
+            .http
+            .get(server.url("/api/grants"))
+            .bearer_auth(token)
+            .send()
+            .await
+            .unwrap()
+            .status(),
+        StatusCode::OK
+    );
 
     let response = server
         .http
@@ -2391,6 +2551,17 @@ async fn api_tokens_are_unavailable_without_oauth() {
             .http
             .get(server.url("/api/settings"))
             .bearer_auth("pensieve_pat_not_valid_in_token_mode")
+            .send()
+            .await
+            .unwrap()
+            .status(),
+        StatusCode::UNAUTHORIZED
+    );
+    assert_eq!(
+        server
+            .http
+            .get(server.url("/api/pages/X?visit=false"))
+            .bearer_auth("pensieve_at_not_valid_in_token_mode")
             .send()
             .await
             .unwrap()

@@ -194,7 +194,8 @@ fn no_store(mut response: Response) -> Response {
     response
 }
 
-/// Cookies only read, plus settings and grant revocation, which a cross-site page can't send
+/// Server and API tokens have full access. OAuth access tokens exclude settings and Connected
+/// apps. Cookies only read, plus settings and grant revocation, which a cross-site page can't send
 /// without CORS approval; so no web page can change memory through a signed-in browser.
 async fn api_auth(State(app): State<Arc<App>>, request: Request, next: Next) -> Response {
     let headers = request.headers();
@@ -207,6 +208,19 @@ async fn api_auth(State(app): State<Arc<App>>, request: Request, next: Next) -> 
         };
     }
     let path = request.uri().path();
+    let oauth_allowed = path != "/settings" && path != "/grants" && !path.starts_with("/grants/");
+    if !bearer
+        && oauth_allowed
+        && let (Some(token), Some(oauth)) = (token, app.oauth.as_ref())
+    {
+        bearer = match oauth
+            .valid_access(app.storage.as_ref(), token, (app.clock)())
+            .await
+        {
+            Ok(valid) => valid,
+            Err(error) => return error.into_response(),
+        };
+    }
     let cookie_method = matches!(*request.method(), Method::GET | Method::HEAD)
         || (*request.method() == Method::PUT && path == "/settings")
         || (*request.method() == Method::DELETE
