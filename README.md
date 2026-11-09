@@ -81,7 +81,7 @@ New backends implement `storage::Storage` and must pass `storage::conformance::c
 
 ## Sign-in
 
-`server.auth = "token"` uses the shared server token. `"oauth"` uses Google sign-in and MCP OAuth tokens. `"both"` enables both methods. OAuth tokens work only at `/mcp`. With `auth = "oauth"`, scripts use a personal API token.
+`server.auth = "token"` uses the shared server token. `"oauth"` uses Google sign-in and MCP OAuth tokens. `"both"` enables both methods. OAuth access tokens work on `/mcp` and `/api`, but not on settings, Connected apps, or API token management. With `auth = "oauth"`, scripts can use an OAuth access token or a personal API token. omp plugins such as pi-pensieve can reuse omp's Pensieve OAuth token.
 
 Create API tokens in **Settings → API tokens** while signed in with Google. Use a token as a bearer for `/api` and `/mcp`; it works until revoked. Any browser signed in with Google can revoke any token. Removing the owner's email from `oauth.allowed_emails` stops its tokens until the email is added back.
 
@@ -155,7 +155,7 @@ Pensieve is my shared memory. At the start of a session, read its guide with `mc
 
 Or install [pi-pensieve](https://github.com/mipsel64/pi-pensieve), which reads the same `mcp.json` entry, adds the instructions, the open `Scratchpad` items and recent journal entries to Pi's system prompt, and appends a summary of each session to that day's `Journal YYYY-MM-DD` page when Pi quits.
 
-With `server.auth = "oauth"`, pi-pensieve needs an API token as `bearerToken` (or through `bearerTokenEnv`) in `~/.config/mcp/mcp.json`; the entry keeps `"auth": "bearer"`. `PENSIEVE_URL` plus `PENSIEVE_TOKEN` in the environment override that file, so update or remove them.
+In plain Pi with `server.auth = "oauth"`, pi-pensieve needs an API token as `bearerToken` (or through `bearerTokenEnv`) in `~/.config/mcp/mcp.json`; the entry keeps `"auth": "bearer"`. `PENSIEVE_URL` plus `PENSIEVE_TOKEN` in the environment override that file, so update or remove them.
 
 With `server.auth = "oauth"` or `"both"`, agents can use MCP OAuth instead of an Authorization header. Pensieve opens Google sign-in and asks for consent.
 
