@@ -1,8 +1,9 @@
 import { useState } from 'react';
-import { Check, Loader2, LogOut, RotateCcw } from 'lucide-react';
+import { Check, Copy, Loader2, LogOut, RotateCcw } from 'lucide-react';
 import { ThemeSegmented } from './ThemeSwitch.jsx';
 import { api } from './api.js';
 import { Empty, ErrorNote, Loading, RelTime, useResource } from './ui.jsx';
+import { useCopy } from './Toast.jsx';
 import { ACCENTS, GraphControls, resetGraph, SEARCH_MODES, Toggle, useSettings } from './settings.jsx';
 
 const MODE_LABELS = {
@@ -79,7 +80,12 @@ export function Settings({ oauth, onSignOut }) {
         </div>
       </section>
 
-      {oauth && <ConnectedApps />}
+      {oauth && (
+        <>
+          <ConnectedApps />
+          <ApiTokens />
+        </>
+      )}
 
       <section className="card settings-section" aria-labelledby="session-title">
         <h2 id="session-title">Session</h2>
@@ -151,6 +157,110 @@ function ConnectedApps() {
         <p className="field-error" role="alert">
           Couldn't revoke the app: {revokeError.message}
         </p>
+      )}
+    </section>
+  );
+}
+
+function ApiTokens() {
+  const { data, error, loading, reload } = useResource('/tokens');
+  const [revoking, setRevoking] = useState(null);
+  const [revokeError, setRevokeError] = useState(null);
+  const [name, setName] = useState('');
+  const [creating, setCreating] = useState(false);
+  const [createError, setCreateError] = useState(null);
+  const [created, setCreated] = useState(null);
+  const copy = useCopy();
+
+  async function revoke(id) {
+    setRevoking(id);
+    setRevokeError(null);
+    try {
+      await api(`/tokens/${encodeURIComponent(id)}`, { method: 'DELETE' });
+      setCreated((current) => (current?.id === id ? null : current));
+      reload();
+    } catch (err) {
+      setRevokeError(err);
+    } finally {
+      setRevoking(null);
+    }
+  }
+
+  async function create(event) {
+    event.preventDefault();
+    setCreating(true);
+    setCreateError(null);
+    try {
+      const token = await api('/tokens', { method: 'POST', body: { name } });
+      setCreated(token);
+      setName('');
+      reload();
+    } catch (err) {
+      setCreateError(err);
+    } finally {
+      setCreating(false);
+    }
+  }
+
+  return (
+    <section className="card settings-section" aria-labelledby="api-tokens-title">
+      <h2 id="api-tokens-title">API tokens</h2>
+      <p className="muted">Tokens act like you on /api and /mcp until revoked. Use them for scripts and plugins such as pi-pensieve.</p>
+      {loading && !data && <Loading label="Loading API tokens" />}
+      {error && <ErrorNote error={error} onRetry={reload} />}
+      {data?.length === 0 && <Empty>No API tokens.</Empty>}
+      {data?.length > 0 && (
+        <ul className="grant-list">
+          {data.map((token) => (
+            <li className="grant" key={token.id}>
+              <div className="grant-details">
+                <strong>{token.name}</strong>
+                <span className="muted">{token.email}</span>
+                <span className="muted small">
+                  Created <RelTime iso={token.created_at} />
+                </span>
+              </div>
+              <button type="button" className="ghost" disabled={revoking !== null} onClick={() => revoke(token.id)}>
+                {revoking === token.id ? 'Revoking…' : 'Revoke'}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      {revokeError && (
+        <p className="field-error" role="alert">
+          Couldn't revoke the API token: {revokeError.message}
+        </p>
+      )}
+      <form className="api-token-form" onSubmit={create}>
+        <label className="api-token-name" htmlFor="api-token-name">
+          <span>Name</span>
+          <span className="field">
+            <input id="api-token-name" value={name} required maxLength={100} disabled={creating} onChange={(event) => setName(event.target.value)} />
+          </span>
+        </label>
+        <button type="submit" className="primary" disabled={creating}>
+          {creating ? 'Creating…' : 'Create'}
+        </button>
+      </form>
+      {createError && (
+        <p className="field-error" role="alert">
+          {createError.message}
+        </p>
+      )}
+      {created && (
+        <div className="api-token-created">
+          <label htmlFor="created-api-token">New API token</label>
+          <div className="api-token-value">
+            <span className="field">
+              <input id="created-api-token" readOnly value={created.token} onFocus={(event) => event.target.select()} />
+            </span>
+            <button type="button" className="ghost" onClick={() => copy(created.token, 'API token copied')}>
+              <Copy size={15} aria-hidden="true" /> Copy
+            </button>
+          </div>
+          <p className="muted small">Copy it now. Pensieve shows it only once.</p>
+        </div>
       )}
     </section>
   );

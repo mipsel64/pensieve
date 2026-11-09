@@ -4,7 +4,8 @@ use std::{
 };
 
 use axum::{
-    Json, Router,
+    Extension, Json, Router,
+    body::to_bytes,
     extract::{DefaultBodyLimit, Path, Query, Request, State},
     http::{HeaderMap, HeaderValue, Method, StatusCode, Uri, header},
     middleware::{self, Next},
@@ -23,7 +24,7 @@ use crate::{
     rerank::Reranker,
     retrieval::{self, DEFAULT_BUDGET, MAX_BUDGET},
     session::{self, Subject},
-    storage::{Change, Grant, Graph, HistoryFilter, Page, Revision, Stats, Storage},
+    storage::{ApiToken, Change, Grant, Graph, HistoryFilter, Page, Revision, Stats, Storage},
 };
 
 const CSP: &str = "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; frame-ancestors 'none'";
@@ -83,6 +84,13 @@ pub fn router(app: Arc<App>) -> Router {
         );
     if app.token.is_some() {
         api = api.route("/login", post(login));
+    }
+    if app.oauth.is_some() {
+        let tokens = Router::new()
+            .route("/tokens", get(api_tokens).post(create_api_token))
+            .route("/tokens/{id}", axum::routing::delete(revoke_api_token))
+            .route_layer(middleware::from_fn_with_state(app.clone(), api_token_auth));
+        api = api.merge(tokens);
     }
     let mcp = Router::new()
         .route("/mcp", post(mcp))
@@ -152,11 +160,52 @@ fn server_token(app: &App, token: &str) -> bool {
         .is_some_and(|expected| bool::from(token.as_bytes().ct_eq(expected.as_bytes())))
 }
 
+async fn valid_api_token(app: &App, token: &str) -> Result<bool> {
+    let Some(oauth) = app.oauth.as_ref() else {
+        return Ok(false);
+    };
+    let owner = app
+        .storage
+        .api_token_owner(&oauth::token_hash(token))
+        .await?;
+    Ok(owner.is_some_and(|email| oauth.allows(&email)))
+}
+
+fn session_subject(app: &App, headers: &HeaderMap) -> Option<Subject> {
+    match session::verify(
+        &app.session_key,
+        app.token.as_deref(),
+        app.oauth.is_some(),
+        headers,
+        (app.clock)(),
+    )? {
+        Subject::Token => Some(Subject::Token),
+        Subject::Email(email) if app.oauth.as_ref().is_some_and(|oauth| oauth.allows(&email)) => {
+            Some(Subject::Email(email))
+        }
+        Subject::Email(_) => None,
+    }
+}
+
+fn no_store(mut response: Response) -> Response {
+    response
+        .headers_mut()
+        .insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
+    response
+}
+
 /// Cookies only read, plus settings and grant revocation, which a cross-site page can't send
 /// without CORS approval; so no web page can change memory through a signed-in browser.
 async fn api_auth(State(app): State<Arc<App>>, request: Request, next: Next) -> Response {
     let headers = request.headers();
-    let bearer = bearer(headers).is_some_and(|token| server_token(&app, token));
+    let token = bearer(headers);
+    let mut bearer = token.is_some_and(|token| server_token(&app, token));
+    if !bearer && let Some(token) = token {
+        bearer = match valid_api_token(&app, token).await {
+            Ok(valid) => valid,
+            Err(error) => return error.into_response(),
+        };
+    }
     let path = request.uri().path();
     let cookie_method = matches!(*request.method(), Method::GET | Method::HEAD)
         || (*request.method() == Method::PUT && path == "/settings")
@@ -164,35 +213,48 @@ async fn api_auth(State(app): State<Arc<App>>, request: Request, next: Next) -> 
             && path
                 .strip_prefix("/grants/")
                 .is_some_and(|id| !id.is_empty() && !id.contains('/')));
-    let subject = session::verify(
-        &app.session_key,
-        app.token.as_deref(),
-        app.oauth.is_some(),
-        headers,
-        (app.clock)(),
-    );
-    let cookie = match subject {
-        Some(Subject::Token) => true,
-        Some(Subject::Email(email)) => app.oauth.as_ref().is_some_and(|oauth| oauth.allows(&email)),
-        None => false,
-    };
-    if !(bearer || (cookie_method && cookie)) {
+    let cookie = cookie_method && session_subject(&app, headers).is_some();
+    if !(bearer || cookie) {
         return StatusCode::UNAUTHORIZED.into_response();
     }
-    let mut response = next.run(request).await;
-    response
-        .headers_mut()
-        .insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
-    response
+    no_store(next.run(request).await)
+}
+
+async fn api_token_auth(State(app): State<Arc<App>>, mut request: Request, next: Next) -> Response {
+    let headers = request.headers();
+    let Some(subject) = session_subject(&app, headers) else {
+        return no_store(StatusCode::UNAUTHORIZED.into_response());
+    };
+    if matches!(*request.method(), Method::POST | Method::DELETE) {
+        let Subject::Email(email) = subject else {
+            return no_store(StatusCode::FORBIDDEN.into_response());
+        };
+        let valid_origin = app.oauth.as_ref().is_some_and(|oauth| {
+            headers.get(header::ORIGIN).and_then(|v| v.to_str().ok()) == Some(oauth.public_url())
+        });
+        if !valid_origin {
+            return no_store(StatusCode::FORBIDDEN.into_response());
+        }
+        request.extensions_mut().insert(email);
+    }
+    no_store(next.run(request).await)
 }
 
 async fn mcp_auth(State(app): State<Arc<App>>, request: Request, next: Next) -> Response {
     let bearer = bearer(request.headers());
     let mut authorized = bearer.is_some_and(|token| server_token(&app, token));
     if !authorized && let (Some(token), Some(oauth)) = (bearer, app.oauth.as_ref()) {
-        authorized = oauth
+        let checked = match oauth
             .valid_access(app.storage.as_ref(), token, (app.clock)())
-            .await;
+            .await
+        {
+            Ok(false) => valid_api_token(&app, token).await,
+            checked => checked,
+        };
+        authorized = match checked {
+            Ok(valid) => valid,
+            Err(error) => return error.into_response(),
+        };
     }
     if !authorized {
         let Some(oauth) = app.oauth.as_ref() else {
@@ -216,11 +278,7 @@ async fn mcp_auth(State(app): State<Arc<App>>, request: Request, next: Next) -> 
         )
             .into_response();
     }
-    let mut response = next.run(request).await;
-    response
-        .headers_mut()
-        .insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
-    response
+    no_store(next.run(request).await)
 }
 
 const MAX_SETTINGS_BYTES: usize = 16 * 1024;
@@ -279,6 +337,105 @@ async fn grants(State(app): State<Arc<App>>) -> Result<Json<Vec<Grant>>> {
 
 async fn revoke_grant(State(app): State<Arc<App>>, Path(id): Path<String>) -> Response {
     match app.storage.revoke_grant(&id).await {
+        Ok(true) => StatusCode::NO_CONTENT.into_response(),
+        Ok(false) => StatusCode::NOT_FOUND.into_response(),
+        Err(error) => error.into_response(),
+    }
+}
+
+async fn api_tokens(State(app): State<Arc<App>>) -> Result<Json<Vec<ApiToken>>> {
+    Ok(Json(app.storage.api_tokens().await?))
+}
+
+const MAX_API_TOKEN_BYTES: usize = 16 * 1024;
+
+async fn create_api_token(
+    State(app): State<Arc<App>>,
+    Extension(email): Extension<String>,
+    request: Request,
+) -> Response {
+    let (parts, body) = request.into_parts();
+    let json = parts
+        .headers
+        .get(header::CONTENT_TYPE)
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.split(';').next())
+        .is_some_and(|value| value.trim().eq_ignore_ascii_case("application/json"));
+    if !json {
+        return (
+            StatusCode::UNSUPPORTED_MEDIA_TYPE,
+            "cannot create API token without application/json",
+        )
+            .into_response();
+    }
+    let body = match to_bytes(body, MAX_API_TOKEN_BYTES + 1).await {
+        Ok(body) if body.len() <= MAX_API_TOKEN_BYTES => body,
+        _ => {
+            return (
+                StatusCode::PAYLOAD_TOO_LARGE,
+                "cannot create API token from a body over 16 KiB",
+            )
+                .into_response();
+        }
+    };
+    let Ok(body) = serde_json::from_slice::<Value>(&body) else {
+        return (
+            StatusCode::BAD_REQUEST,
+            "cannot parse API token request as JSON",
+        )
+            .into_response();
+    };
+    let name = body
+        .as_object()
+        .and_then(|object| object.get("name"))
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|name| (1..=100).contains(&name.chars().count()));
+    let Some(name) = name else {
+        return (
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "cannot create API token without a name of 1 to 100 characters",
+        )
+            .into_response();
+    };
+    let id = oauth::random(16);
+    let token = format!("pensieve_pat_{}", oauth::random(32));
+    if let Err(error) = app
+        .storage
+        .create_api_token(&id, name, &oauth::token_hash(&token), &email, (app.clock)())
+        .await
+    {
+        return error.into_response();
+    }
+    let created_at = match app.storage.api_tokens().await {
+        Ok(tokens) => tokens
+            .into_iter()
+            .find(|created| created.id == id)
+            .map(|created| created.created_at),
+        Err(error) => return error.into_response(),
+    };
+    let Some(created_at) = created_at else {
+        return (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "cannot load created API token",
+        )
+            .into_response();
+    };
+    (
+        StatusCode::CREATED,
+        Json(json!({
+            "id": id,
+            "name": name,
+            "email": email,
+            "created_at": created_at,
+            "token": token,
+        })),
+    )
+        .into_response()
+}
+
+async fn revoke_api_token(State(app): State<Arc<App>>, Path(id): Path<String>) -> Response {
+    match app.storage.revoke_api_token(&id).await {
         Ok(true) => StatusCode::NO_CONTENT.into_response(),
         Ok(false) => StatusCode::NOT_FOUND.into_response(),
         Err(error) => error.into_response(),

@@ -2250,6 +2250,51 @@ button:disabled {
   flex-shrink: 0;
 }
 
+.api-token-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 10px;
+}
+
+.api-token-name {
+  display: grid;
+  flex: 1 1 240px;
+  gap: 6px;
+  color: var(--text-2);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.api-token-created {
+  display: grid;
+  gap: 8px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
+
+.api-token-created > label {
+  color: var(--text-2);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.api-token-value {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.api-token-value .field {
+  flex: 1 1 240px;
+}
+
+.api-token-value input {
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
 /* Full page */
 
 .page-view {

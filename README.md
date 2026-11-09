@@ -81,11 +81,13 @@ New backends implement `storage::Storage` and must pass `storage::conformance::c
 
 ## Sign-in
 
-`server.auth = "token"` uses the shared server token. `"oauth"` uses Google sign-in and MCP OAuth tokens. `"both"` enables both methods. OAuth tokens work only at `/mcp`. Scripts that call `/api` with a bearer token need the server token, so use `both` for those scripts.
+`server.auth = "token"` uses the shared server token. `"oauth"` uses Google sign-in and MCP OAuth tokens. `"both"` enables both methods. OAuth tokens work only at `/mcp`. With `auth = "oauth"`, scripts use a personal API token.
+
+Create API tokens in **Settings → API tokens** while signed in with Google. Use a token as a bearer for `/api` and `/mcp`; it works until revoked. Any browser signed in with Google can revoke any token. Removing the owner's email from `oauth.allowed_emails` stops its tokens until the email is added back.
 
 For Google sign-in, create a Google OAuth client of type **Web application**. Add `P/auth/callback` as an authorized redirect URI. `P` is `oauth.public_url`, normally the Tailscale Serve URL such as `https://my-server.tailnet.ts.net`. Set the client ID, client secret and `oauth.allowed_emails`. Only those exact email addresses can sign in.
 
-A database leak is a full compromise. To end every session and grant after a leak, stop the server, run `sqlite3 <db> "DELETE FROM secrets WHERE name = 'session'; DELETE FROM oauth_grants;"`, then restart.
+A database leak is a full compromise. To end every session, grant and API token after a leak, stop the server, run `sqlite3 <db> "DELETE FROM secrets WHERE name = 'session'; DELETE FROM oauth_grants; DELETE FROM api_tokens;"`, then restart.
 
 ## Web UI
 
@@ -152,6 +154,8 @@ Pensieve is my shared memory. At the start of a session, read its guide with `mc
 ```
 
 Or install [pi-pensieve](https://github.com/mipsel64/pi-pensieve), which reads the same `mcp.json` entry, adds the instructions, the open `Scratchpad` items and recent journal entries to Pi's system prompt, and appends a summary of each session to that day's `Journal YYYY-MM-DD` page when Pi quits.
+
+With `server.auth = "oauth"`, pi-pensieve needs an API token as `bearerToken` (or through `bearerTokenEnv`) in `~/.config/mcp/mcp.json`; the entry keeps `"auth": "bearer"`. `PENSIEVE_URL` plus `PENSIEVE_TOKEN` in the environment override that file, so update or remove them.
 
 With `server.auth = "oauth"` or `"both"`, agents can use MCP OAuth instead of an Authorization header. Pensieve opens Google sign-in and asks for consent.
 

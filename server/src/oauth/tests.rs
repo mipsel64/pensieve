@@ -533,6 +533,38 @@ fn tools_list() -> Value {
     json!({"jsonrpc": "2.0", "id": 1, "method": "tools/list"})
 }
 
+fn assert_no_store(response: &Response) {
+    assert_eq!(response.headers()[header::CACHE_CONTROL], "no-store");
+}
+
+async fn create_api_token(server: &TestServer, session: &str, name: &str) -> Value {
+    let response = server
+        .http
+        .post(server.url("/api/tokens"))
+        .header(header::COOKIE, session)
+        .header(header::ORIGIN, &server.public_url)
+        .json(&json!({"name": name}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::CREATED);
+    assert_no_store(&response);
+    response.json().await.unwrap()
+}
+
+async fn api_tokens(server: &TestServer, session: &str) -> Value {
+    let response = server
+        .http
+        .get(server.url("/api/tokens"))
+        .header(header::COOKIE, session)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_no_store(&response);
+    response.json().await.unwrap()
+}
+
 #[test]
 fn config_parsing_and_validation_follow_the_enabled_methods() {
     for (value, expected) in [
@@ -1848,4 +1880,599 @@ async fn connected_apps_list_and_revoke_grants() {
             .status(),
         StatusCode::NOT_FOUND
     );
+}
+
+#[tokio::test]
+async fn api_tokens_create_authenticate_list_and_revoke() {
+    let server = TestServer::spawn(AuthMode::OAuth).await;
+    let session = google_sign_in(&server).await;
+    let created = create_api_token(&server, &session, "Writer").await;
+    let fields = created.as_object().unwrap();
+    assert_eq!(fields.len(), 5);
+    for field in ["id", "name", "email", "created_at", "token"] {
+        assert!(fields[field].is_string(), "missing string field {field}");
+    }
+    assert_eq!(created["name"], "Writer");
+    assert_eq!(created["email"], EMAIL);
+    let id = created["id"].as_str().unwrap();
+    let token = created["token"].as_str().unwrap();
+    assert!(token.starts_with("pensieve_pat_"));
+
+    let response = server
+        .http
+        .put(server.url("/api/pages/X"))
+        .bearer_auth(token)
+        .json(&json!({"content": "Written by an API token."}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let response = server
+        .http
+        .get(server.url("/api/pages/X?visit=false"))
+        .bearer_auth(token)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let page: Value = response.json().await.unwrap();
+    assert_eq!(page["content"], "Written by an API token.");
+    assert_eq!(
+        server.mcp(Some(token), tools_list()).await.status(),
+        StatusCode::OK
+    );
+
+    let tokens = api_tokens(&server, &session).await;
+    let listed = &tokens.as_array().unwrap()[0];
+    assert_eq!(tokens.as_array().unwrap().len(), 1);
+    assert_eq!(listed["id"], created["id"]);
+    assert_eq!(listed["name"], created["name"]);
+    assert_eq!(listed["email"], created["email"]);
+    assert_eq!(listed["created_at"], created["created_at"]);
+    assert!(listed.get("token").is_none());
+    assert!(listed.get("hash").is_none());
+
+    let response = server
+        .http
+        .delete(server.url(&format!("/api/tokens/{id}")))
+        .header(header::COOKIE, &session)
+        .header(header::ORIGIN, &server.public_url)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::NO_CONTENT);
+    assert_no_store(&response);
+    assert!(response.text().await.unwrap().is_empty());
+    assert_eq!(
+        server
+            .http
+            .get(server.url("/api/pages/X?visit=false"))
+            .bearer_auth(token)
+            .send()
+            .await
+            .unwrap()
+            .status(),
+        StatusCode::UNAUTHORIZED
+    );
+    let response = server.mcp(Some(token), tools_list()).await;
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    assert_eq!(
+        response.headers()[header::WWW_AUTHENTICATE],
+        format!(
+            "Bearer error=\"invalid_token\", resource_metadata=\"{}/.well-known/oauth-protected-resource/mcp\"",
+            server.public_url
+        )
+    );
+    let response = server
+        .http
+        .delete(server.url(&format!("/api/tokens/{id}")))
+        .header(header::COOKIE, &session)
+        .header(header::ORIGIN, &server.public_url)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    assert_no_store(&response);
+    assert_eq!(api_tokens(&server, &session).await, json!([]));
+}
+
+#[tokio::test]
+async fn bearers_cannot_manage_api_tokens() {
+    let server = TestServer::spawn(AuthMode::OAuth).await;
+    let session = google_sign_in(&server).await;
+    let api_token = create_api_token(&server, &session, "API bearer").await;
+    let oauth = issue_tokens(&server, &session, "OAuth bearer").await;
+    for bearer in [
+        api_token["token"].as_str().unwrap(),
+        oauth.access_token.as_str(),
+    ] {
+        let response = server
+            .http
+            .get(server.url("/api/tokens"))
+            .bearer_auth(bearer)
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+        assert_no_store(&response);
+        let response = server
+            .http
+            .post(server.url("/api/tokens"))
+            .bearer_auth(bearer)
+            .header(header::ORIGIN, &server.public_url)
+            .json(&json!({"name": "Must not be created"}))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+        assert_no_store(&response);
+    }
+    assert_eq!(
+        api_tokens(&server, &session)
+            .await
+            .as_array()
+            .unwrap()
+            .len(),
+        1
+    );
+
+    let both = TestServer::spawn(AuthMode::Both).await;
+    let both_session = google_sign_in(&both).await;
+    let response = both
+        .http
+        .get(both.url("/api/tokens"))
+        .bearer_auth(SERVER_TOKEN)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    assert_no_store(&response);
+    let response = both
+        .http
+        .post(both.url("/api/tokens"))
+        .bearer_auth(SERVER_TOKEN)
+        .header(header::ORIGIN, &both.public_url)
+        .json(&json!({"name": "Must not be created"}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    assert_no_store(&response);
+    assert_eq!(api_tokens(&both, &both_session).await, json!([]));
+}
+
+#[tokio::test]
+async fn token_sessions_can_list_but_not_manage_api_tokens() {
+    let server = TestServer::spawn(AuthMode::Both).await;
+    let google_session = google_sign_in(&server).await;
+    let created = create_api_token(&server, &google_session, "Protected").await;
+    let id = created["id"].as_str().unwrap();
+    let response = server
+        .http
+        .post(server.url("/api/login"))
+        .json(&json!({"token": SERVER_TOKEN}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::NO_CONTENT);
+    let token_session = cookie(&response, "pensieve_session");
+    assert_eq!(
+        api_tokens(&server, &token_session)
+            .await
+            .as_array()
+            .unwrap()
+            .len(),
+        1
+    );
+
+    let response = server
+        .http
+        .post(server.url("/api/tokens"))
+        .header(header::COOKIE, &token_session)
+        .header(header::ORIGIN, &server.public_url)
+        .header(header::CONTENT_TYPE, "text/plain")
+        .body("not JSON")
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::FORBIDDEN);
+    assert_no_store(&response);
+    let response = server
+        .http
+        .delete(server.url(&format!("/api/tokens/{id}")))
+        .header(header::COOKIE, &token_session)
+        .header(header::ORIGIN, &server.public_url)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::FORBIDDEN);
+    assert_no_store(&response);
+
+    let response = server
+        .http
+        .get(server.url("/api/tokens"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    assert_no_store(&response);
+    let response = server
+        .http
+        .post(server.url("/api/tokens"))
+        .header(header::ORIGIN, &server.public_url)
+        .header(header::CONTENT_TYPE, "text/plain")
+        .body("not JSON")
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    assert_no_store(&response);
+    let response = server
+        .http
+        .delete(server.url(&format!("/api/tokens/{id}")))
+        .header(header::ORIGIN, &server.public_url)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    assert_no_store(&response);
+    assert_eq!(
+        api_tokens(&server, &google_session)
+            .await
+            .as_array()
+            .unwrap()
+            .len(),
+        1
+    );
+}
+
+#[tokio::test]
+async fn api_token_mutations_require_the_public_origin() {
+    let server = TestServer::spawn(AuthMode::OAuth).await;
+    let session = google_sign_in(&server).await;
+    let created = create_api_token(&server, &session, "Origin protected").await;
+    let id = created["id"].as_str().unwrap();
+    let token = created["token"].as_str().unwrap();
+
+    for origin in [None, Some("null"), Some("https://evil.example")] {
+        let request = server
+            .http
+            .post(server.url("/api/tokens"))
+            .header(header::COOKIE, &session)
+            .header(header::CONTENT_TYPE, "text/plain")
+            .body(r#"{"name":"Must not be created"}"#);
+        let request = match origin {
+            Some(origin) => request.header(header::ORIGIN, origin),
+            None => request,
+        };
+        let response = request.send().await.unwrap();
+        assert_eq!(response.status(), StatusCode::FORBIDDEN);
+        assert_no_store(&response);
+
+        let request = server
+            .http
+            .delete(server.url(&format!("/api/tokens/{id}")))
+            .header(header::COOKIE, &session);
+        let request = match origin {
+            Some(origin) => request.header(header::ORIGIN, origin),
+            None => request,
+        };
+        let response = request.send().await.unwrap();
+        assert_eq!(response.status(), StatusCode::FORBIDDEN);
+        assert_no_store(&response);
+    }
+    assert_eq!(
+        api_tokens(&server, &session)
+            .await
+            .as_array()
+            .unwrap()
+            .len(),
+        1
+    );
+    assert_eq!(
+        server.mcp(Some(token), tools_list()).await.status(),
+        StatusCode::OK
+    );
+}
+
+#[tokio::test]
+async fn api_token_creation_validates_body_and_name() {
+    let server = TestServer::spawn(AuthMode::OAuth).await;
+    let session = google_sign_in(&server).await;
+
+    let response = server
+        .http
+        .post(server.url("/api/tokens"))
+        .header(header::ORIGIN, &server.public_url)
+        .header(header::CONTENT_TYPE, "text/plain")
+        .body("not JSON")
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    assert_no_store(&response);
+    let response = server
+        .http
+        .post(server.url("/api/tokens"))
+        .header(header::COOKIE, &session)
+        .header(header::ORIGIN, &server.public_url)
+        .header(header::CONTENT_TYPE, "text/plain")
+        .body(r#"{"name":"Wrong content type"}"#)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::UNSUPPORTED_MEDIA_TYPE);
+    assert_no_store(&response);
+
+    let oversized = format!(r#"{{"name":"{}"}}"#, "x".repeat(16_384));
+    let response = server
+        .http
+        .post(server.url("/api/tokens"))
+        .header(header::COOKIE, &session)
+        .header(header::ORIGIN, &server.public_url)
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(oversized)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::PAYLOAD_TOO_LARGE);
+    assert_no_store(&response);
+    let response = server
+        .http
+        .post(server.url("/api/tokens"))
+        .header(header::COOKIE, &session)
+        .header(header::ORIGIN, &server.public_url)
+        .header(header::CONTENT_TYPE, "application/json")
+        .body("{")
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    assert_no_store(&response);
+
+    for body in [
+        json!([]),
+        json!("name"),
+        json!({}),
+        json!({"name": 1}),
+        json!({"name": true}),
+    ] {
+        let response = server
+            .http
+            .post(server.url("/api/tokens"))
+            .header(header::COOKIE, &session)
+            .header(header::ORIGIN, &server.public_url)
+            .json(&body)
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(
+            response.status(),
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "{body}"
+        );
+        assert_no_store(&response);
+    }
+    let too_long = "é".repeat(101);
+    for name in ["", " \t\n", too_long.as_str()] {
+        let response = server
+            .http
+            .post(server.url("/api/tokens"))
+            .header(header::COOKIE, &session)
+            .header(header::ORIGIN, &server.public_url)
+            .json(&json!({"name": name}))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
+        assert_no_store(&response);
+    }
+
+    let hundred = "é".repeat(100);
+    let created = create_api_token(&server, &session, &hundred).await;
+    assert_eq!(created["name"], json!(hundred));
+    let created = create_api_token(&server, &session, " \t Script token \n").await;
+    assert_eq!(created["name"], "Script token");
+    let first = create_api_token(&server, &session, "Duplicate").await;
+    let second = create_api_token(&server, &session, "Duplicate").await;
+    assert_ne!(first["id"], second["id"]);
+
+    let response = server
+        .http
+        .post(server.url("/api/tokens"))
+        .header(header::COOKIE, &session)
+        .header(header::ORIGIN, &server.public_url)
+        .json(&json!({"name": "Unknown fields", "extra": true}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::CREATED);
+    assert_no_store(&response);
+    assert_eq!(
+        api_tokens(&server, &session)
+            .await
+            .as_array()
+            .unwrap()
+            .len(),
+        5
+    );
+}
+
+#[tokio::test]
+async fn api_tokens_follow_owner_allowlist() {
+    let server = TestServer::spawn(AuthMode::OAuth).await;
+    let session = google_sign_in(&server).await;
+    let created = create_api_token(&server, &session, "Allowlisted").await;
+    let token = created["token"].as_str().unwrap();
+    assert_eq!(
+        server
+            .http
+            .get(server.url("/api/settings"))
+            .bearer_auth(token)
+            .send()
+            .await
+            .unwrap()
+            .status(),
+        StatusCode::OK
+    );
+
+    let removed = server.restart(PUBLIC_URL, vec![OTHER_EMAIL.into()]).await;
+    assert_eq!(
+        removed
+            .http
+            .get(removed.url("/api/settings"))
+            .bearer_auth(token)
+            .send()
+            .await
+            .unwrap()
+            .status(),
+        StatusCode::UNAUTHORIZED
+    );
+    let response = removed.mcp(Some(token), tools_list()).await;
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    assert_eq!(
+        response.headers()[header::WWW_AUTHENTICATE],
+        format!(
+            "Bearer error=\"invalid_token\", resource_metadata=\"{}/.well-known/oauth-protected-resource/mcp\"",
+            removed.public_url
+        )
+    );
+
+    let restored = removed.restart(PUBLIC_URL, vec![EMAIL.into()]).await;
+    assert_eq!(
+        restored
+            .http
+            .get(restored.url("/api/settings"))
+            .bearer_auth(token)
+            .send()
+            .await
+            .unwrap()
+            .status(),
+        StatusCode::OK
+    );
+    assert_eq!(
+        restored.mcp(Some(token), tools_list()).await.status(),
+        StatusCode::OK
+    );
+}
+
+#[tokio::test]
+async fn api_tokens_are_unavailable_without_oauth() {
+    let server = TestServer::spawn(AuthMode::Token).await;
+    let response = server
+        .http
+        .get(server.url("/api/tokens"))
+        .bearer_auth(SERVER_TOKEN)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    let response = server
+        .http
+        .post(server.url("/api/tokens"))
+        .bearer_auth(SERVER_TOKEN)
+        .header(header::ORIGIN, &server.public_url)
+        .json(&json!({"name": "Not mounted"}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    let response = server
+        .http
+        .delete(server.url("/api/tokens/unknown"))
+        .bearer_auth(SERVER_TOKEN)
+        .header(header::ORIGIN, &server.public_url)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    assert_eq!(
+        server
+            .http
+            .get(server.url("/api/settings"))
+            .bearer_auth("pensieve_pat_not_valid_in_token_mode")
+            .send()
+            .await
+            .unwrap()
+            .status(),
+        StatusCode::UNAUTHORIZED
+    );
+    assert_eq!(
+        server
+            .mcp(Some("pensieve_pat_not_valid_in_token_mode"), tools_list())
+            .await
+            .status(),
+        StatusCode::UNAUTHORIZED
+    );
+}
+
+#[tokio::test]
+async fn api_token_routes_ignore_authorization() {
+    let server = TestServer::spawn(AuthMode::OAuth).await;
+    let session = google_sign_in(&server).await;
+    let bootstrap = create_api_token(&server, &session, "Bootstrap").await;
+    let valid = bootstrap["token"].as_str().unwrap();
+
+    for (index, bearer) in [None, Some(valid), Some("invalid-bearer")]
+        .into_iter()
+        .enumerate()
+    {
+        let request = server
+            .http
+            .get(server.url("/api/tokens"))
+            .header(header::COOKIE, &session);
+        let request = match bearer {
+            Some(bearer) => request.bearer_auth(bearer),
+            None => request,
+        };
+        let response = request.send().await.unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_no_store(&response);
+
+        let request = server
+            .http
+            .post(server.url("/api/tokens"))
+            .header(header::COOKIE, &session)
+            .header(header::ORIGIN, &server.public_url)
+            .json(&json!({"name": format!("Cookie creation {index}")}));
+        let request = match bearer {
+            Some(bearer) => request.bearer_auth(bearer),
+            None => request,
+        };
+        let response = request.send().await.unwrap();
+        assert_eq!(response.status(), StatusCode::CREATED);
+        assert_no_store(&response);
+    }
+    assert_eq!(
+        api_tokens(&server, &session)
+            .await
+            .as_array()
+            .unwrap()
+            .len(),
+        4
+    );
+}
+
+#[tokio::test]
+async fn api_tokens_are_sorted_by_creation_then_id() {
+    let server = TestServer::spawn(AuthMode::OAuth).await;
+    let session = google_sign_in(&server).await;
+    let older = create_api_token(&server, &session, "Older").await;
+    server.advance(60);
+    let left = create_api_token(&server, &session, "Same time").await;
+    let right = create_api_token(&server, &session, "Same time").await;
+    assert_ne!(older["created_at"], left["created_at"]);
+    assert_eq!(left["created_at"], right["created_at"]);
+
+    let mut tied = [left["id"].as_str().unwrap(), right["id"].as_str().unwrap()];
+    tied.sort();
+    let expected = [tied[0], tied[1], older["id"].as_str().unwrap()];
+    let tokens = api_tokens(&server, &session).await;
+    let actual: Vec<_> = tokens
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|token| token["id"].as_str().unwrap())
+        .collect();
+    assert_eq!(actual, expected);
 }

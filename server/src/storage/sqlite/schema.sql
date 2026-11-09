@@ -86,3 +86,6 @@ CREATE TABLE IF NOT EXISTS oauth_tokens (
     hash TEXT PRIMARY KEY, grant_id TEXT NOT NULL REFERENCES oauth_grants (id) ON DELETE CASCADE,
     kind TEXT NOT NULL CHECK (kind IN ('access', 'refresh', 'used_refresh')), expires_at INTEGER NOT NULL);
 CREATE INDEX IF NOT EXISTS oauth_tokens_grant ON oauth_tokens (grant_id);
+
+CREATE TABLE IF NOT EXISTS api_tokens (
+    id TEXT PRIMARY KEY, name TEXT NOT NULL, hash TEXT NOT NULL UNIQUE, email TEXT NOT NULL, created_at INTEGER NOT NULL);
