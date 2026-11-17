@@ -1,5 +1,5 @@
 import { useContext, useEffect, useMemo, useState } from 'react';
-import { ArrowRight, ArrowUpRight, Check, Copy, FileText, Layers, ListTree, Sparkles } from 'lucide-react';
+import { ArrowUp, ArrowUpRight, Check, Copy, FileText, Layers, ListTree, Sparkles } from 'lucide-react';
 import { Button } from '@astryxdesign/core/Button';
 import { Card } from '@astryxdesign/core/Card';
 import { Center } from '@astryxdesign/core/Center';
@@ -19,7 +19,7 @@ import { TextInput } from '@astryxdesign/core/TextInput';
 import { Token } from '@astryxdesign/core/Token';
 import { api, query, Unauthorized } from './api.js';
 import { href, usePageHref } from './router.js';
-import { AuthContext, Empty, ErrorNote, formatNumber, Loading, Logo, Markdown, PageLink, RelTime, TypeBadge } from './ui.jsx';
+import { AuthContext, Empty, ErrorNote, formatNumber, Loading, Markdown, PageLink, RelTime, TypeBadge } from './ui.jsx';
 import { Toggle, useSettings } from './settings.jsx';
 import { withoutTitle } from './Page.jsx';
 
@@ -90,12 +90,11 @@ function SearchHome({ initialMode, onSubmit }) {
     <Center width="100%" minHeight="100%" padding={6}>
       <VStack gap={6} hAlign="center" width="100%">
         <VStack gap={2} hAlign="center">
-          <Logo size={84} />
-          <Heading level={1} type="display-2">
-            Pensieve
+          <Heading level={1} type="display-2" justify="center">
+            What would you like to recall?
           </Heading>
         </VStack>
-        <VStack width="100%" maxWidth={680}>
+        <VStack width="100%" maxWidth={768}>
           <AskBox big initial="" autoFocus placeholder="Ask memory anything, or look up a page" onSubmit={(value) => onSubmit(value, mode)}>
             <SegmentedControl value={mode} onChange={setMode} label="Show" size="sm">
               {MODES.map(([value, label, ModeIcon]) => (
@@ -122,6 +121,7 @@ function AskBox({ initial, big, autoFocus, placeholder, onSubmit, children }) {
       isLabelHidden
       value={value}
       onChange={setValue}
+      controlClassName="ask-box-input"
       placeholder={placeholder}
       autoComplete="off"
       enterKeyHint="search"
@@ -132,7 +132,7 @@ function AskBox({ initial, big, autoFocus, placeholder, onSubmit, children }) {
     />
   );
   const submit = (
-    <IconButton label="Search" tooltip="Search" type="submit" variant="primary" icon={<Icon icon={ArrowRight} />} isDisabled={!value.trim()} />
+    <IconButton label="Search" tooltip="Search" type="submit" variant="primary" icon={<Icon icon={ArrowUp} />} isDisabled={!value.trim()} />
   );
   return (
     <VStack

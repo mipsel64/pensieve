@@ -8,14 +8,14 @@ import { AuthContext } from './ui.jsx';
 // Each accent selects an Astryx theme from accents.js.
 export const ACCENTS = {
   silver: { label: 'Silver' },
-  seaglass: { label: 'Sea glass' },
+  claude: { label: 'Claude' },
   moonlight: { label: 'Moonlight' },
   lavender: { label: 'Lavender' },
   ember: { label: 'Ember' },
 };
 
 export const DEFAULT_SETTINGS = {
-  accent: 'seaglass',
+  accent: 'claude',
   search: { mode: 'ask', rerank: true },
   graph: {
     missing: false,

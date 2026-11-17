@@ -9,10 +9,10 @@ import './themes/accents/pensieve-moonlight.css';
 import './themes/accents/pensieve-lavender.css';
 import './themes/accents/pensieve-ember.css';
 
-// Sea glass is the editor's base theme; the others extend it from themes/accents (npm run themes rebuilds them).
+// The base theme is Claude-inspired; the other accents extend it (npm run themes rebuilds them).
 export const ACCENT_THEMES = {
   silver: pensieveSilverTheme,
-  seaglass: pensieveTheme,
+  claude: pensieveTheme,
   moonlight: pensieveMoonlightTheme,
   lavender: pensieveLavenderTheme,
   ember: pensieveEmberTheme,
