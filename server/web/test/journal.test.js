@@ -1,11 +1,14 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { createElement } from 'react';
-import { renderToStaticMarkup } from 'react-dom/server';
-import ReactMarkdown from 'react-markdown';
+import { parseMarkdownAst } from '@astryxdesign/core/Markdown/parser';
+import { createMarkdownPlugin } from '@astryxdesign/core/Markdown/plugins';
+import { createMarkdownRemarkTransform } from '@astryxdesign/core/Markdown/remark';
 import { JOURNAL_DAY, isDailyJournal, remarkNewestFirst } from '../src/journal.js';
 
-const render = (body, newestFirst = true) => renderToStaticMarkup(createElement(ReactMarkdown, { remarkPlugins: newestFirst ? [remarkNewestFirst] : [] }, body));
+// The same plugin entry ui.jsx gives Astryx's <Markdown>, run through Astryx's own parser.
+const newestFirst = createMarkdownPlugin({ name: 'newest-first', apiVersion: 1, transform: createMarkdownRemarkTransform(remarkNewestFirst) });
+const render = (body, sorted = true) =>
+  JSON.stringify(parseMarkdownAst(body, { plugins: sorted ? [newestFirst] : [] }), (key, value) => (key === 'position' ? undefined : value));
 
 test('only exact daily journal pages enable sorting', () => {
   assert.equal(JOURNAL_DAY.exec('Journal 2026-09-30')?.[1], '2026-09-30');

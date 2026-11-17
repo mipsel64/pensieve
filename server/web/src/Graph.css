@@ -1,0 +1,46 @@
+@layer app {
+  .graph-view {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    min-height: 0;
+    overflow: hidden;
+    background: var(--color-background-body);
+  }
+
+  .graph-canvas {
+    position: absolute;
+    inset: 0;
+    overflow: hidden;
+  }
+
+  .graph-count,
+  .graph-panel,
+  .graph-panel-open {
+    position: absolute;
+    z-index: 1;
+  }
+
+  .graph-count {
+    inset-block-end: var(--spacing-3);
+    inset-inline-start: var(--spacing-4);
+    pointer-events: none;
+  }
+
+  .graph-panel,
+  .graph-panel-open {
+    inset-block-start: var(--spacing-3);
+    inset-inline-end: var(--spacing-3);
+  }
+
+  .graph-panel {
+    width: 18rem;
+    max-width: calc(100% - var(--spacing-6));
+    max-height: calc(100% - var(--spacing-6));
+    overflow: auto;
+    border: var(--border-width) solid var(--color-border);
+    border-radius: var(--radius-container);
+    background: var(--color-background-surface);
+    box-shadow: var(--shadow-med);
+  }
+}

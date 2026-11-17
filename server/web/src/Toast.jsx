@@ -1,30 +1,26 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import { createContext, useCallback, useContext, useMemo } from 'react';
+import { useToast as useAstryxToast } from '@astryxdesign/core/Toast';
 import { copyText } from './clipboard.js';
 
 const ToastContext = createContext(() => {});
 
 /** Shows one short message at the bottom of the screen; a new message replaces the old one. */
 export function ToastProvider({ children }) {
-  const [toast, setToast] = useState(null);
-  const timer = useRef(0);
-  const show = useCallback((message, { error = false } = {}) => {
-    clearTimeout(timer.current);
-    setToast({ message, error, id: Math.random() });
-    timer.current = setTimeout(() => setToast(null), 2400);
-  }, []);
-  useEffect(() => () => clearTimeout(timer.current), []);
-  return (
-    <ToastContext.Provider value={show}>
-      {children}
-      <div className="toast-region" role="status" aria-live="polite">
-        {toast && (
-          <p key={toast.id} className={`toast${toast.error ? ' error' : ''}`}>
-            {toast.message}
-          </p>
-        )}
-      </div>
-    </ToastContext.Provider>
+  const showToast = useAstryxToast();
+  const show = useCallback(
+    (message, { error = false } = {}) => {
+      showToast({
+        body: message,
+        type: error ? 'error' : 'info',
+        isAutoHide: true,
+        autoHideDuration: 2400,
+        uniqueID: 'pensieve-notice',
+        collisionBehavior: 'overwrite',
+      });
+    },
+    [showToast],
   );
+  return <ToastContext.Provider value={show}>{children}</ToastContext.Provider>;
 }
 
 export const useToast = () => useContext(ToastContext);

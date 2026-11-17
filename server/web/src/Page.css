@@ -1,0 +1,40 @@
+@layer app {
+  .reading-progress {
+    position: sticky;
+    top: calc(-1 * var(--spacing-6));
+    z-index: 1;
+    background: var(--color-background-body);
+  }
+
+  .page-view {
+    display: grid;
+    grid-template-columns: minmax(0, 47.5rem) minmax(14rem, 18rem);
+    gap: var(--spacing-8);
+    align-items: start;
+    justify-content: center;
+  }
+
+  .page-view > .astryx-layout {
+    margin: 0;
+  }
+
+  .page-view > .astryx-layout,
+  .page-sidebar {
+    min-width: 0;
+  }
+
+  .page-sidebar {
+    position: sticky;
+    top: 0;
+  }
+
+  @media (max-width: 70rem) {
+    .page-view {
+      grid-template-columns: minmax(0, 47.5rem);
+    }
+
+    .page-sidebar {
+      position: static;
+    }
+  }
+}

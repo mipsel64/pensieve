@@ -1,20 +1,31 @@
-import { useContext, useEffect, useRef, useState } from 'react';
-import { History, ScrollText, X } from 'lucide-react';
+import { useCallback, useContext, useEffect, useRef, useState } from 'react';
+import { Badge } from '@astryxdesign/core/Badge';
+import { Button } from '@astryxdesign/core/Button';
+import { Grid } from '@astryxdesign/core/Grid';
+import { Icon } from '@astryxdesign/core/Icon';
+import { Link } from '@astryxdesign/core/Link';
+import { List, ListItem } from '@astryxdesign/core/List';
+import { HStack, VStack } from '@astryxdesign/core/Stack';
+import { TextInput } from '@astryxdesign/core/TextInput';
+import { Heading, Text } from '@astryxdesign/core/Text';
+import { Timestamp } from '@astryxdesign/core/Timestamp';
+import { History, ScrollText } from 'lucide-react';
 import { api, query, Unauthorized } from './api.js';
 import { href } from './router.js';
-import { AuthContext, Empty, ErrorNote, formatNumber, Loading, PageLink, RelTime, useResource } from './ui.jsx';
+import { AuthContext, Empty, ErrorNote, formatNumber, Loading, PageLink, RelTime } from './ui.jsx';
 
 const PAGE = 50;
 const dayFormat = new Intl.DateTimeFormat(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
-const timeFormat = new Intl.DateTimeFormat(undefined, { hour: '2-digit', minute: '2-digit' });
 
 export function Timeline({ params }) {
   const lock = useContext(AuthContext);
   const { author, title } = params;
-  const stats = useResource('/stats');
   const [entries, setEntries] = useState([]);
   const [state, setState] = useState({ loading: true, error: null, done: false });
   const latest = useRef(0);
+  const updateFilter = useCallback((field, value) => {
+    location.hash = href('timeline', { ...params, [field]: value || undefined });
+  }, [params]);
 
   async function load(before) {
     // Only the newest request may update the list, so a slow response can't overwrite a newer filter.
@@ -46,34 +57,16 @@ export function Timeline({ params }) {
   }
 
   return (
-    <div className="view">
-      <header className="view-header">
-        <h1>Timeline</h1>
-        <p className="muted">Every write, newest first, with the summary the agent gave.</p>
-      </header>
+    <VStack gap={6}>
+      <VStack as="header" gap={1}>
+        <Heading level={1}>Timeline</Heading>
+        <Text color="secondary">Every write, newest first, with the summary the agent gave.</Text>
+      </VStack>
 
-      <div className="toolbar">
-        <label htmlFor="author-filter">Agent</label>
-        <select
-          id="author-filter"
-          value={author ?? ''}
-          onChange={(e) => (location.hash = href('timeline', { ...params, author: e.target.value || undefined }))}
-        >
-          <option value="">All agents</option>
-          {/* Stats list only the most active agents; an older one can still come from a link. */}
-          {author && stats.data && !stats.data.authors.some((a) => a.name === author) && <option value={author}>{author}</option>}
-          {(stats.data?.authors ?? []).map((a) => (
-            <option key={a.name} value={a.name}>
-              {a.name} ({formatNumber(a.writes)})
-            </option>
-          ))}
-        </select>
-        {title && (
-          <a className="chip removable" href={href('timeline', { ...params, title: undefined })} aria-label={`Stop filtering by page ${title}`}>
-            page: {title} <X size={14} aria-hidden="true" />
-          </a>
-        )}
-      </div>
+      <Grid columns={{ minWidth: 220, max: 2 }} gap={3}>
+        <TimelineFilter field="author" label="Agent" placeholder="All agents" value={author} onFilter={updateFilter} />
+        <TimelineFilter field="title" label="Page title" placeholder="All pages" value={title} onFilter={updateFilter} />
+      </Grid>
 
       {state.error && <ErrorNote error={state.error} onRetry={() => load(state.before)} />}
       {!state.loading && !state.error && entries.length === 0 && (
@@ -82,47 +75,69 @@ export function Timeline({ params }) {
         </Empty>
       )}
 
-      <div className="timeline">
+      <VStack gap={5}>
         {groups.map((group) => (
-          <section key={group.day} aria-label={group.day}>
-            <h2 className="timeline-day">{group.day}</h2>
-            <ol>
+          <VStack as="section" key={group.day} aria-label={group.day} gap={2}>
+            <Heading level={2}>{group.day}</Heading>
+            <List hasDividers edge="flush">
               {group.entries.map((r) => (
-                <li key={r.seq} className="timeline-entry">
-                  <time className="mono muted" dateTime={r.at} title={new Date(r.at).toLocaleString()}>
-                    {timeFormat.format(new Date(r.at))}
-                  </time>
-                  <div className="timeline-main">
-                    <div className="timeline-title">
+                <ListItem
+                  key={r.seq}
+                  align="start"
+                  startContent={<Timestamp value={r.at} format="time" type="code" color="secondary" />}
+                  label={
+                    <HStack gap={2} align="center" wrap="wrap">
                       <PageLink title={r.title} />
-                      <span className="chip">{r.rev === 1 ? 'created' : `rev ${r.rev}`}</span>
-                    </div>
-                    <p className="timeline-summary">{r.summary ?? <span className="muted">No summary</span>}</p>
-                  </div>
-                  <div className="timeline-meta">
-                    <a className="mono" href={href('timeline', { ...params, author: r.by })}>
-                      {r.by}
-                    </a>
-                    <span className="muted">{formatNumber(r.bytes)} bytes</span>
-                  </div>
-                </li>
+                      <Badge variant="neutral" label={r.rev === 1 ? 'created' : `rev ${r.rev}`} />
+                    </HStack>
+                  }
+                  description={<Text as="p" color={r.summary ? 'primary' : 'secondary'}>{r.summary ?? 'No summary'}</Text>}
+                  endContent={
+                    <VStack gap={1} align="end">
+                      <Link type="code" maxLines={1} href={href('timeline', { ...params, author: r.by })}>{r.by}</Link>
+                      <Text type="supporting" color="secondary">{formatNumber(r.bytes)} bytes</Text>
+                    </VStack>
+                  }
+                />
               ))}
-            </ol>
-          </section>
+            </List>
+          </VStack>
         ))}
-      </div>
+      </VStack>
 
       {state.loading && <Loading label="Loading writes" variant={entries.length ? 'inline' : 'list'} />}
       {!state.loading && !state.done && entries.length > 0 && (
-        <button type="button" className="ghost load-more" onClick={() => load(entries.at(-1).seq)}>
-          <History size={16} aria-hidden="true" /> Older writes
-        </button>
+        <HStack justify="center">
+          <Button label="Older writes" variant="ghost" icon={<Icon icon={History} size="sm" />} onClick={() => load(entries.at(-1).seq)} />
+        </HStack>
       )}
       {state.done && entries.length > 0 && (
-        <p className="muted small center">
+        <Text as="p" type="supporting" color="secondary" justify="center">
           Start of history · <RelTime iso={entries.at(-1).at} />
-        </p>
+        </Text>
       )}
-    </div>
+    </VStack>
+  );
+}
+
+function TimelineFilter({ field, label, placeholder, value, onFilter }) {
+  const [draft, setDraft] = useState(value ?? '');
+  useEffect(() => setDraft(value ?? ''), [value]);
+  useEffect(() => {
+    if (draft === (value ?? '')) return undefined;
+    const timeout = setTimeout(() => onFilter(field, draft), 300);
+    return () => clearTimeout(timeout);
+  }, [draft, field, value, onFilter]);
+  return (
+    <TextInput
+      type="search"
+      enterKeyHint="search"
+      label={label}
+      placeholder={placeholder}
+      value={draft}
+      hasClear
+      onChange={setDraft}
+      onEnter={() => onFilter(field, draft)}
+    />
   );
 }

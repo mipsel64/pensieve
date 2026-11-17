@@ -1,11 +1,14 @@
-import { useEffect, useId, useMemo, useRef, useState } from 'react';
-import { CornerDownLeft, FileText, Search } from 'lucide-react';
-import { query } from './api.js';
+import { useContext, useEffect, useMemo, useRef, useState } from 'react';
+import { CommandPalette, CommandPaletteInput, useCommandPaletteContext } from '@astryxdesign/core/CommandPalette';
+import { Icon } from '@astryxdesign/core/Icon';
+import { Kbd } from '@astryxdesign/core/Kbd';
+import { Text } from '@astryxdesign/core/Text';
+import { FileText, Search } from 'lucide-react';
+import { api, query, Unauthorized } from './api.js';
 import { fuzzyFilter, fuzzyMatch, highlightRuns } from './fuzzy.js';
-import { Modal } from './Overlay.jsx';
 import { pushRecent, readRecent, writeRecent } from './recent.js';
 import { href } from './router.js';
-import { TypeBadge, useResource } from './ui.jsx';
+import { AuthContext, TypeBadge, useResource } from './ui.jsx';
 
 const storage = () => {
   try {
@@ -18,175 +21,170 @@ const storage = () => {
 // The server drops everything but letters and digits, so punctuation alone would list recent pages as matches.
 const searchable = (q) => /[\p{L}\p{N}]/u.test(q);
 
-function useDebounced(value, ms) {
-  const [debounced, setDebounced] = useState(value);
-  useEffect(() => {
-    const timer = setTimeout(() => setDebounced(value), ms);
-    return () => clearTimeout(timer);
-  }, [value, ms]);
-  return debounced;
-}
-
 function Highlighted({ text, indices }) {
   if (!indices.length) return text;
-  return highlightRuns(text, indices).map((run, i) => (run.hit ? <mark key={i}>{run.text}</mark> : run.text));
+  return highlightRuns(text, indices).map((run, i) =>
+    run.hit ? (
+      <Text key={i} type="inherit" color="accent" weight="semibold">
+        {run.text}
+      </Text>
+    ) : (
+      run.text
+    ),
+  );
 }
 
-const pageItem = (hit, indices = []) => ({ key: `page:${hit.title}`, type: 'page', id: hit.title, label: hit.title, kind: hit.kind ?? null, icon: FileText, indices });
-const commandItem = (command, indices = []) => ({ key: `command:${command.id}`, type: 'command', id: command.id, label: command.label, hint: command.hint, icon: command.icon, indices, run: command.run });
+const pageItem = (hit, indices = []) => ({
+  key: `page:${hit.title}`,
+  type: 'page',
+  id: hit.title,
+  label: hit.title,
+  kind: hit.kind ?? null,
+  icon: FileText,
+  indices,
+});
+const commandItem = (command, indices = []) => ({
+  key: `command:${command.id}`,
+  type: 'command',
+  id: command.id,
+  label: command.label,
+  hint: command.hint,
+  icon: command.icon,
+  indices,
+  run: command.run,
+});
+const flattenGroups = (groups) => groups.flatMap((group) => group.items.map((item) => ({ ...item, id: item.key, target: item.id, auxiliaryData: { group: group.title } })));
+
+// Astryx starts each result list with nothing highlighted; Enter should open the first row, as before.
+function PaletteInput() {
+  const palette = useCommandPaletteContext();
+  const rows = palette?.selectableItems.length ?? 0;
+  const highlighted = palette?.highlightedIndex ?? 0;
+  useEffect(() => {
+    if (rows && highlighted < 0) palette.setHighlightedIndex(0);
+  }, [palette, rows, highlighted]);
+  return <CommandPaletteInput label="Search pages and commands" placeholder="Search pages, commands" />;
+}
 
 /**
  * Command palette: pages (recently written ones filtered here, the rest looked up on the server after a pause), views, appearance and help.
  * `commands` is `[{ id, group, label, keywords, hint, icon, run }]`.
  */
 export function Palette({ commands, onClose }) {
-  const [text, setText] = useState('');
-  const [active, setActive] = useState(0);
+  const lock = useContext(AuthContext);
   const [recent, setRecent] = useState(() => readRecent(storage()));
-  const list = useRef(null);
-  const listId = useId();
-  const term = text.trim();
-  const settled = useDebounced(term, 220);
-
   const index = useResource('/search?q=&limit=50&rerank=false');
-  const lookup = useResource(searchable(settled) ? `/search${query({ q: settled, limit: 8, rerank: false })}` : null);
-  const waiting = searchable(term) && (term !== settled || lookup.loading);
+  // Every row the palette has been given, by id, so a selection can find its command or page.
+  const shown = useRef(new Map());
 
-  const groups = useMemo(() => {
+  const searchSource = useMemo(() => {
     const indexHits = index.data?.hits ?? [];
-    const out = [];
-    const add = (title, items) => items.length && out.push({ title, items });
-    if (!term) {
-      const known = new Map(commands.map((c) => [c.id, c]));
-      const seen = new Set();
-      const recents = recent
-        .map((e) => (e.type === 'page' ? pageItem(indexHits.find((h) => h.title === e.id) ?? { title: e.id }) : known.has(e.id) ? commandItem(known.get(e.id)) : null))
-        .filter(Boolean);
-      recents.forEach((r) => seen.add(r.key));
-      add('Recent', recents.slice(0, 5));
-      add('Recently written', indexHits.map((h) => pageItem(h)).filter((p) => !seen.has(p.key)).slice(0, 4));
-      for (const title of ['Go to', 'Appearance', 'Help']) add(title, commands.filter((c) => c.group === title).map((c) => commandItem(c)));
+    const groups = (term, found = []) => {
+      const out = [];
+      const add = (title, items) => items.length && out.push({ title, items });
+      if (!term) {
+        const known = new Map(commands.map((command) => [command.id, command]));
+        const recents = recent
+          .map((entry) =>
+            entry.type === 'page'
+              ? pageItem(indexHits.find((hit) => hit.title === entry.id) ?? { title: entry.id })
+              : known.has(entry.id)
+                ? commandItem(known.get(entry.id))
+                : null,
+          )
+          .filter(Boolean)
+          .slice(0, 5);
+        const seen = new Set(recents.map((item) => item.key));
+        add('Recent', recents);
+        add('Recently written', indexHits.map((hit) => pageItem(hit)).filter((page) => !seen.has(page.key)).slice(0, 4));
+        for (const title of ['Go to', 'Appearance', 'Help']) add(title, commands.filter((command) => command.group === title).map((command) => commandItem(command)));
+        return out;
+      }
+      const pages = fuzzyFilter(indexHits, term, (hit) => hit.title, { minPerChar: 2 })
+        .slice(0, 6)
+        .map((result) => pageItem(result.item, result.indices));
+      const seen = new Set(pages.map((page) => page.key));
+      add('Pages', [...pages, ...found.map((hit) => pageItem(hit)).filter((page) => !seen.has(page.key))].slice(0, 9));
+      const matched = fuzzyFilter(commands, term, (command) => `${command.label} ${command.keywords ?? ''}`, { minPerChar: 2 }).slice(0, 6);
+      add(
+        'Commands',
+        matched.map((result) => commandItem(result.item, fuzzyMatch(term, result.item.label)?.indices ?? [])),
+      );
+      if (searchable(term)) add('Search', [{ key: `search:${term}`, type: 'search', id: term, label: `Search memory for “${term}”`, icon: Search, indices: [] }]);
       return out;
-    }
-    const byTitle = fuzzyFilter(indexHits, term, (h) => h.title, { minPerChar: 2 }).slice(0, 6);
-    const pages = byTitle.map((r) => pageItem(r.item, r.indices));
-    const seen = new Set(pages.map((p) => p.key));
-    const found = searchable(term) && term === settled ? (lookup.data?.hits ?? []) : [];
-    add('Pages', [...pages, ...found.map((h) => pageItem(h)).filter((p) => !seen.has(p.key))].slice(0, 9));
-    const matched = fuzzyFilter(commands, term, (c) => `${c.label} ${c.keywords ?? ''}`, { minPerChar: 2 }).slice(0, 6);
-    add('Commands', matched.map((r) => commandItem(r.item, fuzzyMatch(term, r.item.label)?.indices ?? [])));
-    if (searchable(term)) add('Search', [{ key: 'search', type: 'search', id: term, label: `Search memory for “${term}”`, icon: Search, indices: [] }]);
-    return out;
-  }, [term, settled, commands, recent, index.data, lookup.data]);
-
-  const flat = useMemo(() => groups.flatMap((g) => g.items), [groups]);
-  const current = Math.min(active, Math.max(flat.length - 1, 0));
-  const activeId = flat.length ? `${listId}-${current}` : undefined;
-
-  useEffect(() => {
-    list.current?.querySelector(`[id="${activeId}"]`)?.scrollIntoView({ block: 'nearest' });
-  }, [activeId]);
+    };
+    const remember = (items) => {
+      for (const item of items) shown.current.set(item.id, item);
+      return items;
+    };
+    // The server lookup waits for a pause in typing; a newer query releases the wait without fetching.
+    let timer = 0;
+    let release = null;
+    const pause = () =>
+      new Promise((resolve) => {
+        release = () => resolve(false);
+        timer = setTimeout(() => resolve(true), 220);
+      });
+    return {
+      bootstrap: () => remember(flattenGroups(groups(''))),
+      async search(value, context) {
+        const term = value.trim();
+        const local = remember(flattenGroups(groups(term)));
+        if (!searchable(term)) return local;
+        context?.update(local);
+        if (!(await pause())) return local;
+        try {
+          const { hits = [] } = await api(`/search${query({ q: term, limit: 8, rerank: false })}`);
+          return remember(flattenGroups(groups(term, hits)));
+        } catch (error) {
+          if (error instanceof Unauthorized) lock();
+          return local;
+        }
+      },
+      cancel() {
+        clearTimeout(timer);
+        release?.();
+      },
+    };
+  }, [commands, recent, index.data, lock]);
 
   const choose = (item) => {
     if (item.type !== 'search') {
-      const next = pushRecent(recent, { type: item.type, id: item.id });
+      const next = pushRecent(recent, { type: item.type, id: item.target });
       writeRecent(storage(), next);
       setRecent(next);
     }
     onClose();
-    if (item.type === 'page') location.hash = href('page', { title: item.id });
-    else if (item.type === 'search') location.hash = href('search', { q: item.id, mode: 'keywords' });
+    if (item.type === 'page') location.hash = href('page', { title: item.target });
+    else if (item.type === 'search') location.hash = href('search', { q: item.target, mode: 'keywords' });
     else item.run();
   };
 
-  const onKeyDown = (event) => {
-    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
-      event.preventDefault();
-      if (flat.length) setActive((current + (event.key === 'ArrowDown' ? 1 : -1) + flat.length) % flat.length);
-    } else if (event.key === 'Enter' && flat[current]) {
-      event.preventDefault();
-      choose(flat[current]);
-    }
-  };
+  const emptyBootstrap = index.loading ? 'Loading pages…' : index.error ? `Couldn’t load pages: ${index.error.message}` : 'No pages or commands yet.';
 
-  let position = -1;
   return (
-    <Modal label="Command palette" onClose={onClose} className="palette">
-      <div className="palette-input">
-        <Search size={16} aria-hidden="true" />
-        <input
-          data-autofocus
-          type="text"
-          role="combobox"
-          aria-expanded="true"
-          aria-controls={listId}
-          aria-activedescendant={activeId}
-          aria-autocomplete="list"
-          aria-label="Search pages and commands"
-          placeholder="Search pages, commands"
-          autoComplete="off"
-          spellCheck="false"
-          value={text}
-          onChange={(event) => {
-            setText(event.target.value);
-            setActive(0);
-          }}
-          onKeyDown={onKeyDown}
-        />
-        {waiting && <span className="palette-busy" aria-hidden="true" />}
-      </div>
-      <div ref={list} id={listId} className="palette-list" role="listbox" aria-label="Results" aria-busy={waiting}>
-        {groups.map((group) => (
-          <div key={group.title} role="group" aria-label={group.title} className="palette-group">
-            <p className="palette-heading" aria-hidden="true">
-              {group.title}
-            </p>
-            {group.items.map((item) => {
-              position++;
-              const at = position;
-              const Icon = item.icon;
-              return (
-                <div
-                  key={item.key}
-                  id={`${listId}-${at}`}
-                  role="option"
-                  aria-selected={at === current}
-                  className="palette-item"
-                  onMouseMove={() => at !== active && setActive(at)}
-                  onClick={() => choose(item)}
-                >
-                  <Icon size={16} aria-hidden="true" />
-                  <span className="palette-label">
-                    <Highlighted text={item.label} indices={item.indices} />
-                  </span>
-                  {item.type === 'page' && item.kind && <TypeBadge kind={item.kind} />}
-                  {item.hint && <kbd>{item.hint}</kbd>}
-                </div>
-              );
-            })}
-          </div>
-        ))}
-        {!flat.length && (
-          <p className="palette-empty" role="status">
-            {waiting || index.loading ? 'Searching…' : index.error ? `Couldn’t load pages: ${index.error.message}` : 'No pages or commands match.'}
-          </p>
-        )}
-      </div>
-      <footer className="palette-foot" aria-hidden="true">
-        <span>
-          <kbd>↑</kbd>
-          <kbd>↓</kbd> move
-        </span>
-        <span>
-          <kbd>
-            <CornerDownLeft size={11} />
-          </kbd>{' '}
-          open
-        </span>
-        <span>
-          <kbd>esc</kbd> close
-        </span>
-      </footer>
-    </Modal>
+    <CommandPalette
+      isOpen
+      label="Command palette"
+      onOpenChange={(open) => !open && onClose()}
+      searchSource={searchSource}
+      input={<PaletteInput />}
+      renderItem={(item) => (
+        <>
+          <Icon icon={item.icon} size="sm" />
+          <Text type="body" maxLines={1} style={{ flex: 1, minWidth: 0 }}>
+            <Highlighted text={item.label} indices={item.indices} />
+          </Text>
+          {item.type === 'page' && item.kind && <TypeBadge kind={item.kind} />}
+          {item.hint && <Kbd keys={item.hint.replaceAll(' ', '+')} />}
+        </>
+      )}
+      emptySearchText="No pages or commands match."
+      emptyBootstrapText={emptyBootstrap}
+      onValueChange={(id) => {
+        const item = shown.current.get(id);
+        if (item) choose(item);
+      }}
+    />
   );
 }

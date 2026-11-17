@@ -1,17 +1,42 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
+import { Banner } from '@astryxdesign/core/Banner';
+import { Button } from '@astryxdesign/core/Button';
+import { Card as AstryxCard } from '@astryxdesign/core/Card';
+import { EmptyState } from '@astryxdesign/core/EmptyState';
+import { Grid } from '@astryxdesign/core/Grid';
+import { Icon } from '@astryxdesign/core/Icon';
+import { IconButton } from '@astryxdesign/core/IconButton';
+import { Link } from '@astryxdesign/core/Link';
+import { Markdown as AstryxMarkdown } from '@astryxdesign/core/Markdown';
+import { createMarkdownPlugin } from '@astryxdesign/core/Markdown/plugins';
+import { createMarkdownRemarkTransform } from '@astryxdesign/core/Markdown/remark';
+import { Skeleton } from '@astryxdesign/core/Skeleton';
+import { Spinner } from '@astryxdesign/core/Spinner';
+import { HStack, VStack } from '@astryxdesign/core/Stack';
+import { Heading, Text } from '@astryxdesign/core/Text';
+import { Timestamp } from '@astryxdesign/core/Timestamp';
+import { Token } from '@astryxdesign/core/Token';
+import { Link2, RefreshCw } from 'lucide-react';
 import { remarkNewestFirst } from './journal.js';
-import { AlertTriangle, Link2, Loader2, RefreshCw } from 'lucide-react';
 import { api, Unauthorized } from './api.js';
 import { RouteContext, usePageHref } from './router.js';
-import { remarkHeadingIds } from './toc.js';
 
 export const KINDS = ['topic', 'entity', 'source', 'synthesis', 'runbook', 'incident', 'audit', 'journal'];
+/** Astryx palette color of each page type: Token colors, and the graph's node colors through --color-text-<color>. */
+export const KIND_PALETTE = {
+  topic: 'blue',
+  entity: 'green',
+  source: 'purple',
+  synthesis: 'teal',
+  runbook: 'yellow',
+  incident: 'red',
+  audit: 'orange',
+  journal: 'pink',
+  untyped: 'gray',
+  missing: 'gray',
+};
 // Values are CSS variables, so they follow the theme; the canvas reads them with cssColor.
-const KIND_NAMES = [...KINDS, 'untyped', 'missing'];
-export const KIND_COLORS = Object.fromEntries(KIND_NAMES.map((name) => [name, `var(--kind-${name})`]));
-export const KIND_BACKGROUNDS = Object.fromEntries(KIND_NAMES.map((name) => [name, `var(--kind-${name}-bg)`]));
+export const KIND_COLORS = Object.fromEntries(Object.entries(KIND_PALETTE).map(([kind, color]) => [kind, `var(--color-text-${color})`]));
 
 export const AuthContext = createContext(() => {});
 
@@ -51,169 +76,141 @@ export function useStats() {
   return stats;
 }
 
-const relative = new Intl.RelativeTimeFormat(undefined, { numeric: 'auto' });
-const UNITS = [
-  ['year', 31536000],
-  ['month', 2592000],
-  ['week', 604800],
-  ['day', 86400],
-  ['hour', 3600],
-  ['minute', 60],
-];
-
-export function timeAgo(iso) {
-  const seconds = (Date.parse(iso) - Date.now()) / 1000;
-  const [unit, size] = UNITS.find(([, size]) => Math.abs(seconds) >= size) ?? ['second', 1];
-  return Math.abs(seconds) < 45 ? 'just now' : relative.format(Math.round(seconds / size), unit);
-}
-
+/** Relative time ("3 hours ago") with the full time on hover; it takes the surrounding text style. */
 export function RelTime({ iso }) {
-  if (!iso) return <span className="muted">never</span>;
-  return (
-    <time dateTime={iso} title={new Date(iso).toLocaleString()}>
-      {timeAgo(iso)}
-    </time>
-  );
+  if (!iso) return <Text type="inherit" color="secondary">never</Text>;
+  return <Timestamp value={iso} format="relative" type="inherit" color="inherit" />;
 }
 
 export const formatNumber = (n) => new Intl.NumberFormat().format(n);
 
 export function TypeBadge({ kind }) {
   const name = kind ?? 'untyped';
-  return (
-    <span className="badge" style={{ '--kind': KIND_COLORS[name] ?? KIND_COLORS.untyped, '--kind-bg': KIND_BACKGROUNDS[name] ?? KIND_BACKGROUNDS.untyped }}>
-      {name}
-    </span>
-  );
+  return <Token label={name} size="sm" color={KIND_PALETTE[name] ?? KIND_PALETTE.untyped} />;
 }
 
 export function PageLink({ title, missing, children }) {
   const pageHref = usePageHref();
   return (
-    <a href={pageHref(title)} className={missing ? 'page-link missing' : 'page-link'} title={missing ? `${title} (no page yet)` : undefined}>
+    <Link href={pageHref(title)} type="inherit" color={missing ? 'secondary' : 'accent'} tooltip={missing ? `${title} (no page yet)` : undefined}>
       {children ?? title}
-    </a>
+    </Link>
   );
 }
 
-export function Card({ title, icon: Icon, action, className = '', children }) {
+/** A dashboard widget: a titled Card with an optional `action` at the end of the title row. */
+export function Card({ title, icon, action, children }) {
   return (
-    <section className={`card ${className}`} aria-label={title}>
-      {title && (
-        <header className="card-header">
-          <h2>
-            {Icon && <Icon aria-hidden="true" size={16} />}
-            {title}
-          </h2>
-          {action}
-        </header>
-      )}
-      {children}
-    </section>
+    <AstryxCard>
+      <VStack gap={3}>
+        {title && (
+          <HStack gap={2} align="center" justify="between">
+            <HStack gap={2} align="center">
+              {icon && <Icon icon={icon} size="sm" color="secondary" />}
+              <Heading level={2}>{title}</Heading>
+            </HStack>
+            {action}
+          </HStack>
+        )}
+        {children}
+      </VStack>
+    </AstryxCard>
   );
 }
 
-const bar = (width, height) => ({ width, height });
+const lines = (widths, height = 14) => widths.map((width, i) => <Skeleton key={i} width={width} height={height} index={i} />);
 
 const ARTICLE_SKELETON = (
-  <>
-    <span className="skel-row">
-      <span className="skel pill" />
-      <span className="skel pill" />
-      <span className="skel pill" />
-    </span>
-    {['100%', '96%', '88%', '100%', '62%'].map((w, i) => (
-      <span key={i} className="skel" style={bar(w, 14)} />
-    ))}
-    <span className="skel" style={{ ...bar('38%', 20), marginTop: 12 }} />
-    {['100%', '92%', '70%'].map((w, i) => (
-      <span key={i} className="skel" style={bar(w, 14)} />
-    ))}
-  </>
+  <VStack gap={2}>
+    <HStack gap={2}>{lines([64, 72, 56], 22)}</HStack>
+    {lines(['100%', '96%', '88%', '100%', '62%'])}
+    <Skeleton width="38%" height={20} />
+    {lines(['100%', '92%', '70%'])}
+  </VStack>
 );
 
 const SKELETONS = {
   // The page header already shows the title, so `article` leaves out the title bar.
   article: ARTICLE_SKELETON,
   page: (
-    <>
-      <span className="skel" style={bar('55%', 28)} />
+    <VStack gap={3}>
+      <Skeleton width="55%" height={28} />
       {ARTICLE_SKELETON}
-    </>
+    </VStack>
   ),
-  list: [0, 1, 2, 3, 4, 5].map((i) => (
-    <span key={i} className="skel-item">
-      <span className="skel dot" />
-      <span className="skel-stack">
-        <span className="skel" style={bar(`${70 - i * 6}%`, 14)} />
-        <span className="skel" style={bar('40%', 11)} />
-      </span>
-    </span>
-  )),
+  list: (
+    <VStack gap={3}>
+      {[0, 1, 2, 3, 4, 5].map((i) => (
+        <HStack key={i} gap={3} align="center">
+          <Skeleton width={10} height={10} radius="rounded" index={i} />
+          <VStack gap={1} width="100%">
+            <Skeleton width={`${70 - i * 6}%`} height={14} index={i} />
+            <Skeleton width="40%" height={11} index={i} />
+          </VStack>
+        </HStack>
+      ))}
+    </VStack>
+  ),
   cards: (
-    <>
-      <span className="skel-grid">
+    <VStack gap={4}>
+      <Grid columns={{ minWidth: 160 }} gap={4}>
         {[0, 1, 2, 3].map((i) => (
-          <span key={i} className="skel" style={bar('100%', 84)} />
+          <Skeleton key={i} height={84} index={i} />
         ))}
-      </span>
-      <span className="skel-grid two">
-        <span className="skel" style={bar('100%', 220)} />
-        <span className="skel" style={bar('100%', 220)} />
-      </span>
-    </>
+      </Grid>
+      <Grid columns={{ minWidth: 320 }} gap={4}>
+        <Skeleton height={220} />
+        <Skeleton height={220} index={1} />
+      </Grid>
+    </VStack>
   ),
 };
 
-/** Shown while data loads. `variant` picks a placeholder shaped like the content; it appears after 150 ms so a fast load never flashes. */
+/** Shown while data loads. `variant` picks a placeholder shaped like the content: inline, article, page, list or cards. */
 export function Loading({ label = 'Loading', variant = 'inline' }) {
   if (variant === 'inline') {
     return (
-      <div className="state" role="status">
-        <Loader2 className="spin" aria-hidden="true" size={18} />
-        {label}…
-      </div>
+      <HStack gap={2} align="center" padding={4} role="status">
+        <Spinner size="sm" aria-label={label} />
+        <Text color="secondary">{label}…</Text>
+      </HStack>
     );
   }
   return (
-    <div className={`skel-wrap skel-${variant}`} role="status" aria-busy="true" aria-label={label}>
+    <VStack role="status" aria-busy="true" aria-label={label}>
       {SKELETONS[variant]}
-    </div>
+    </VStack>
   );
 }
 
 export function ErrorNote({ error, onRetry }) {
   if (error instanceof Unauthorized) return null;
   return (
-    <div className="state error" role="alert">
-      <AlertTriangle aria-hidden="true" size={18} />
-      <span className="state-text">
-        <strong>Something went wrong</strong>
-        <span>{error.message}</span>
-      </span>
-      {onRetry && (
-        <button type="button" className="ghost" onClick={onRetry}>
-          <RefreshCw size={14} aria-hidden="true" /> Retry
-        </button>
-      )}
-    </div>
+    <Banner
+      status="error"
+      title="Something went wrong"
+      description={error.message}
+      endContent={onRetry && <Button label="Retry" size="sm" icon={<Icon icon={RefreshCw} />} onClick={onRetry} />}
+    />
   );
 }
 
-/** Nothing to show. With a `title` it becomes a designed empty state: icon, title, hint (children) and one `action` `{ href, label }`. */
-export function Empty({ children, title, icon: Icon, action }) {
-  if (!title) return <p className="state muted">{children}</p>;
+/** Nothing to show. With a `title` it becomes an EmptyState: icon, title, hint (children, a string) and one `action` `{ href, label }`. */
+export function Empty({ children, title, icon, action }) {
+  if (!title) {
+    return (
+      <Text as="p" color="secondary">
+        {children}
+      </Text>
+    );
+  }
   return (
-    <div className="empty">
-      {Icon && <Icon aria-hidden="true" size={22} />}
-      <p className="empty-title">{title}</p>
-      {children && <p className="empty-hint">{children}</p>}
-      {action && (
-        <a className="ghost" href={action.href}>
-          {action.label}
-        </a>
-      )}
-    </div>
+    <EmptyState
+      title={title}
+      description={children}
+      icon={icon && <Icon icon={icon} size="lg" color="secondary" />}
+      actions={action && <Button label={action.label} href={action.href} />}
+    />
   );
 }
 
@@ -254,39 +251,24 @@ function remarkWikilinks() {
   return walk;
 }
 
+const WIKILINKS = createMarkdownPlugin({ name: 'wikilinks', apiVersion: 1, transform: createMarkdownRemarkTransform(remarkWikilinks) });
+const NEWEST_FIRST = createMarkdownPlugin({ name: 'newest-first', apiVersion: 1, transform: createMarkdownRemarkTransform(remarkNewestFirst) });
+const PLAIN_PLUGINS = [WIKILINKS];
+const JOURNAL_PLUGINS = [WIKILINKS, NEWEST_FIRST];
+
+/** The plugins <Markdown> renders with; pass the same list to useOutlineFromMarkdown so outline ids match the headings. */
+export const markdownPlugins = (newestFirst = false) => (newestFirst ? JOURNAL_PLUGINS : PLAIN_PLUGINS);
+
 const EMPTY_SET = new Set();
 
-function Heading({ level, id, onAnchor, children }) {
-  const Tag = `h${level}`;
-  return (
-    <Tag id={id}>
-      {children}
-      {id && onAnchor && (
-        <button type="button" className="heading-anchor" aria-label="Copy link to section" title="Copy link to section" onClick={() => onAnchor(id)}>
-          <Link2 size={14} aria-hidden="true" />
-        </button>
-      )}
-    </Tag>
-  );
-}
-
 /**
- * Page Markdown with GFM and working [[links]]; raw HTML is not rendered. `missing` holds lowercased targets.
- * `onAnchor(id)` adds ids and a copy-link button to headings.
+ * Page Markdown (Astryx Markdown: GFM, no raw HTML) with working [[links]]. `missing` holds lowercased targets.
+ * `onAnchor(id)` adds a copy-link button to headings; ids are Astryx's, the same ones useOutlineFromMarkdown returns.
  */
 export function Markdown({ children, missing = EMPTY_SET, newestFirst = false, onAnchor }) {
-  const components = useMemo(() => {
-    const heading = (level) =>
-      function MarkdownHeading({ id, children }) {
-        return (
-          <Heading level={level} id={id} onAnchor={onAnchor}>
-            {children}
-          </Heading>
-        );
-      };
-    return {
-      ...(onAnchor && { h1: heading(1), h2: heading(2), h3: heading(3), h4: heading(4) }),
-      a({ href = '', children }) {
+  const components = useMemo(
+    () => ({
+      link({ href = '', children }) {
         const title = href.startsWith('#wiki/') ? safeDecode(href.slice(6)) : null;
         if (title !== null) {
           return (
@@ -295,19 +277,29 @@ export function Markdown({ children, missing = EMPTY_SET, newestFirst = false, o
             </PageLink>
           );
         }
-        const external = /^https?:/i.test(href);
         return (
-          <a href={href} {...(external ? { target: '_blank', rel: 'noopener noreferrer' } : {})}>
+          <Link href={href} type="inherit" isExternalLink={/^https?:/i.test(href)}>
             {children}
-          </a>
+          </Link>
         );
       },
-    };
-  }, [missing, onAnchor]);
+      ...(onAnchor && {
+        heading({ level, id, children }) {
+          return (
+            <Heading level={level} id={id}>
+              {children}
+              {id && <IconButton label="Copy link to section" size="sm" variant="ghost" icon={<Icon icon={Link2} />} onClick={() => onAnchor(id)} />}
+            </Heading>
+          );
+        },
+      }),
+    }),
+    [missing, onAnchor],
+  );
   return (
-    <ReactMarkdown remarkPlugins={[remarkGfm, remarkWikilinks, ...(onAnchor ? [remarkHeadingIds] : []), ...(newestFirst ? [remarkNewestFirst] : [])]} components={components}>
+    <AstryxMarkdown plugins={markdownPlugins(newestFirst)} components={components} autolink="gfm">
       {children}
-    </ReactMarkdown>
+    </AstryxMarkdown>
   );
 }
 
@@ -342,9 +334,10 @@ function unquoteList(value) {
     .join(', ');
 }
 
+/** The Pensieve mark: a basin with mist. It takes the surrounding text color. */
 export function Logo({ size = 28 }) {
   return (
-    <svg className="logo" width={size} height={size} viewBox="0 0 32 32" aria-hidden="true">
+    <svg width={size} height={size} viewBox="0 0 32 32" aria-hidden="true">
       <path
         d="M12.8 13.2c-2.4-2.6.2-4.7 2.3-6.4 1.7-1.4 1.3-3.3-.3-4.3M18.6 13.4c1.7-2-.1-3.6 1.5-5.4.9-1 2.1-1.3 3.1-1"
         fill="none"

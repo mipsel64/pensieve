@@ -1,10 +1,20 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import ForceGraph2D from 'react-force-graph-2d';
-import { Crosshair, RotateCcw, Settings2, X } from 'lucide-react';
+import { Banner } from '@astryxdesign/core/Banner';
+import { Button } from '@astryxdesign/core/Button';
+import { Collapsible, CollapsibleGroup } from '@astryxdesign/core/Collapsible';
+import { TextInput } from '@astryxdesign/core/TextInput';
+import { Icon } from '@astryxdesign/core/Icon';
+import { IconButton } from '@astryxdesign/core/IconButton';
+import { HStack, VStack } from '@astryxdesign/core/Stack';
+import { Heading, Text } from '@astryxdesign/core/Text';
+import { ToggleButton } from '@astryxdesign/core/ToggleButton';
+import { Circle, Crosshair, RotateCcw, Settings2, X } from 'lucide-react';
 import { href } from './router.js';
-import { ErrorNote, formatNumber, KIND_COLORS, KINDS, Loading, useResource } from './ui.jsx';
+import { ErrorNote, formatNumber, KIND_COLORS, KIND_PALETTE, KINDS, Loading, useResource } from './ui.jsx';
 import { GraphControls, resetGraph, useSettings } from './settings.jsx';
 import { cssColor, useTheme } from './theme.js';
+import './Graph.css';
 
 const kindOf = (node) => (node.missing ? 'missing' : (node.kind ?? 'untyped'));
 const endpoint = (end) => (typeof end === 'object' ? end.id : end);
@@ -17,18 +27,18 @@ const LABEL_SIZE = 5;
 const FONT = '"IBM Plex Sans Variable", system-ui, sans-serif';
 const BASE_FONT = `${LABEL_SIZE}px ${FONT}`;
 
-// The canvas cannot read var(), so colors are looked up per theme.
+// The canvas cannot read var(), so colors are looked up per theme and accent.
 function readPalette() {
   const kinds = {};
-  for (const kind of Object.keys(KIND_COLORS)) kinds[kind] = cssColor(`--kind-${kind}`);
+  for (const [kind, color] of Object.entries(KIND_PALETTE)) kinds[kind] = cssColor(`--color-text-${color}`);
   return {
     kinds,
-    link: cssColor('--graph-link'),
-    linkDim: cssColor('--graph-link-dim'),
-    label: cssColor('--graph-label'),
-    halo: cssColor('--graph-halo'),
-    ring: cssColor('--graph-ring'),
-    highlight: cssColor('--graph-highlight'),
+    link: cssColor('--color-border-emphasized'),
+    linkDim: cssColor('--color-border'),
+    label: cssColor('--color-text-secondary'),
+    halo: cssColor('--color-background-surface'),
+    ring: cssColor('--color-border'),
+    highlight: cssColor('--color-accent'),
   };
 }
 
@@ -50,8 +60,9 @@ export function GraphView({ params }) {
   const { settings, update, status, retry } = useSettings();
   const g = settings.graph;
   const { resolved } = useTheme();
-  // Reading CSS values after a theme change gives the new palette; `resolved` is the cue.
-  const palette = useMemo(readPalette, [resolved]);
+  // <Theme> marks <html> in a layout effect after this render, so the new palette is read once the commit is done.
+  const [palette, setPalette] = useState(readPalette);
+  useEffect(() => setPalette(readPalette()), [resolved, settings.accent]);
   const box = useRef(null);
   const fg = useRef(null);
   const [size, setSize] = useState({ width: 0, height: 0 });
@@ -221,8 +232,8 @@ export function GraphView({ params }) {
   const kinds = [...KINDS, 'untyped'].filter((k) => model.counts[k]);
 
   return (
-    <div className="graph-view">
-      <div className="graph-canvas" ref={box} aria-label="Link graph of all pages. Use Filters to find a page, or the page panel for its links.">
+    <VStack className="graph-view">
+      <VStack className="graph-canvas" ref={box} aria-label="Link graph of all pages. Use Filters to find a page, or the page panel for its links.">
         {size.width > 0 && (
           <ForceGraph2D
             ref={fg}
@@ -259,95 +270,125 @@ export function GraphView({ params }) {
             }}
           />
         )}
-      </div>
+      </VStack>
 
-      <p className="graph-count mono" aria-live="polite">
-        {formatNumber(data.nodes.length)} pages · {formatNumber(data.links.length)} links
-      </p>
+      <VStack className="graph-count" aria-live="polite">
+        <Text type="code" size="sm" color="secondary">
+          {formatNumber(data.nodes.length)} pages · {formatNumber(data.links.length)} links
+        </Text>
+      </VStack>
 
       {panel ? (
-        <aside className="graph-panel" aria-label="Graph settings">
-          <div className="graph-panel-head">
-            <h2>Graph</h2>
-            <button type="button" className="icon-button" onClick={() => resetGraph(update)} aria-label="Restore default graph settings" title="Restore defaults">
-              <RotateCcw size={15} aria-hidden="true" />
-            </button>
-            <button type="button" className="icon-button" onClick={() => setPanel(false)} aria-label="Close graph settings">
-              <X size={16} aria-hidden="true" />
-            </button>
-          </div>
+        <VStack as="aside" className="graph-panel" aria-label="Graph settings" padding={2} gap={2}>
+          <HStack align="center" justify="between" gap={1} width="100%">
+            <Heading level={2}>Graph</Heading>
+            <HStack gap={1}>
+              <IconButton
+                label="Restore default graph settings"
+                tooltip="Restore defaults"
+                variant="ghost"
+                size="sm"
+                icon={<Icon icon={RotateCcw} />}
+                onClick={() => resetGraph(update)}
+              />
+              <IconButton label="Close graph settings" variant="ghost" size="sm" icon={<Icon icon={X} />} onClick={() => setPanel(false)} />
+            </HStack>
+          </HStack>
 
           {status.state === 'error' && (
-            <p className="graph-panel-error" role="alert">
-              Couldn't save settings.{' '}
-              <button type="button" className="link-button" onClick={retry}>
-                Retry
-              </button>
-            </p>
+            <VStack role="alert">
+              <Banner status="error" title="Couldn't save settings" endContent={<Button label="Retry" size="sm" onClick={retry} />} />
+            </VStack>
           )}
 
-          <details open>
-            <summary>Filters</summary>
-            <form className="find" onSubmit={locate} role="search">
-              <div className="field">
-                <input
-                  id="graph-find"
-                  list="graph-titles"
-                  value={find}
-                  onChange={(e) => setFind(e.target.value)}
-                  // WebKit keeps Enter for the suggestion list, so the form would never submit.
-                  onKeyDown={(e) => e.key === 'Enter' && locate(e)}
-                  placeholder="Search pages…"
-                  aria-label="Search pages in the graph"
-                  autoComplete="off"
-                />
-                <button className="icon-button" aria-label="Center on page" disabled={!query}>
-                  <Crosshair size={15} aria-hidden="true" />
-                </button>
-              </div>
-              <datalist id="graph-titles">
-                {model.nodes
-                  .filter((n) => !n.missing)
-                  .map((n) => (
-                    <option key={n.id} value={n.id} />
+          <CollapsibleGroup type="multiple" defaultValue={['filters', 'groups']} hasDividers density="compact">
+            <Collapsible value="filters" trigger="Filters">
+              <VStack gap={3} paddingBlock={2}>
+                <VStack as="form" onSubmit={locate} role="search" gap={1}>
+                  <HStack align="end" gap={1} width="100%">
+                    <TextInput
+                      id="graph-find"
+                      label="Search pages in the graph"
+                      isLabelHidden
+                      list="graph-titles"
+                      value={find}
+                      onChange={setFind}
+                      // WebKit keeps Enter for the suggestion list, so the form would never submit.
+                      onKeyDown={(e) => {
+                        if (e.key !== 'Enter') return;
+                        e.preventDefault();
+                        if (e.nativeEvent.isComposing || e.keyCode === 229) return;
+                        locate(e);
+                      }}
+                      placeholder="Search pages…"
+                      autoComplete="off"
+                      width="100%"
+                    />
+                    <IconButton type="submit" label="Center on page" variant="ghost" size="sm" isDisabled={!query} icon={<Icon icon={Crosshair} />} />
+                  </HStack>
+                  <datalist id="graph-titles">
+                    {model.nodes
+                      .filter((n) => !n.missing)
+                      .map((n) => (
+                        <option key={n.id} value={n.id} />
+                      ))}
+                  </datalist>
+                </VStack>
+                <GraphControls section="filters" idPrefix="graph" />
+              </VStack>
+            </Collapsible>
+
+            <Collapsible value="groups" trigger="Groups">
+              <VStack gap={3} paddingBlock={2}>
+                <GraphControls section="groups" idPrefix="graph" />
+                <VStack gap={1} width="100%">
+                  {kinds.map((kind) => (
+                    <ToggleButton
+                      key={kind}
+                      label={kind}
+                      size="sm"
+                      isPressed={!hidden.has(kind)}
+                      onPressedChange={() => toggleKind(kind)}
+                      icon={<Icon icon={Circle} style={{ color: g.colorByType ? KIND_COLORS[kind] : KIND_COLORS.untyped, fill: 'currentColor' }} />}
+                    >
+                      <HStack gap={2} align="center">
+                        <Text>{kind}</Text>
+                        <Text type="code" color="secondary">
+                          {formatNumber(model.counts[kind])}
+                        </Text>
+                      </HStack>
+                    </ToggleButton>
                   ))}
-              </datalist>
-            </form>
-            <GraphControls section="filters" idPrefix="graph" />
-          </details>
+                </VStack>
+              </VStack>
+            </Collapsible>
 
-          <details open>
-            <summary>Groups</summary>
-            <GraphControls section="groups" idPrefix="graph" />
-            <ul className="legend">
-              {kinds.map((kind) => (
-                <li key={kind}>
-                  <button type="button" className="legend-item" aria-pressed={!hidden.has(kind)} onClick={() => toggleKind(kind)}>
-                    <span className="dot" style={{ background: g.colorByType ? KIND_COLORS[kind] : KIND_COLORS.untyped }} aria-hidden="true" />
-                    <span className="legend-name">{kind}</span>
-                    <span className="mono muted">{formatNumber(model.counts[kind])}</span>
-                  </button>
-                </li>
-              ))}
-            </ul>
-          </details>
+            <Collapsible value="display" trigger="Display">
+              <VStack paddingBlock={2}>
+                <GraphControls section="display" idPrefix="graph" />
+              </VStack>
+            </Collapsible>
 
-          <details>
-            <summary>Display</summary>
-            <GraphControls section="display" idPrefix="graph" />
-          </details>
-
-          <details>
-            <summary>Forces</summary>
-            <GraphControls section="forces" idPrefix="graph" />
-          </details>
-        </aside>
+            <Collapsible value="forces" trigger="Forces">
+              <VStack paddingBlock={2}>
+                <GraphControls section="forces" idPrefix="graph" />
+              </VStack>
+            </Collapsible>
+          </CollapsibleGroup>
+        </VStack>
       ) : (
-        <button type="button" className="graph-panel-open icon-button" onClick={() => setPanel(true)} aria-label="Open graph settings" title="Graph settings">
-          <Settings2 size={18} aria-hidden="true" />
-        </button>
+        <VStack className="graph-panel-open">
+          <IconButton
+            label="Open graph settings"
+            tooltip="Graph settings"
+            variant="secondary"
+            elevation="med"
+            icon={<Icon icon={Settings2} />}
+            onClick={() => setPanel(true)}
+          />
+        </VStack>
       )}
-    </div>
+    </VStack>
   );
 }
 

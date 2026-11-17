@@ -1,8 +1,11 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import { Slider as AstryxSlider } from '@astryxdesign/core/Slider';
+import { VStack } from '@astryxdesign/core/Stack';
+import { Switch } from '@astryxdesign/core/Switch';
 import { api, Unauthorized } from './api.js';
 import { AuthContext } from './ui.jsx';
 
-// Fill colors live in style.css as --accent-<id>, one per theme.
+// Each accent selects an Astryx theme from accents.js.
 export const ACCENTS = {
   silver: { label: 'Silver' },
   seaglass: { label: 'Sea glass' },
@@ -151,37 +154,27 @@ export function SettingsProvider({ initial, children }) {
     };
   }, [flush, put]);
 
-  const accent = settings.accent;
-  useEffect(() => {
-    const root = document.documentElement;
-    root.dataset.accent = accent;
-    return () => delete root.dataset.accent;
-  }, [accent]);
-
   const value = useMemo(() => ({ settings, update, status, retry, flush }), [settings, update, status, retry, flush]);
   return <SettingsContext.Provider value={value}>{children}</SettingsContext.Provider>;
 }
 
 export function Toggle({ id, label, checked, onChange }) {
-  return (
-    <label className="toggle" htmlFor={id}>
-      <span>{label}</span>
-      <input id={id} type="checkbox" role="switch" checked={checked} onChange={(e) => onChange(e.target.checked)} />
-    </label>
-  );
+  return <Switch htmlName={id} label={label} value={checked} onChange={onChange} labelPosition="start" labelSpacing="spread" size="sm" width="100%" />;
 }
 
 export function Slider({ id, label, min, max, step, value, onChange }) {
   return (
-    <div className="slider">
-      <label htmlFor={id}>
-        <span>{label}</span>
-        <output htmlFor={id} className="mono muted">
-          {+value.toFixed(2)}
-        </output>
-      </label>
-      <input id={id} type="range" min={min} max={max} step={step} value={value} onChange={(e) => onChange(Number(e.target.value))} />
-    </div>
+    <AstryxSlider
+      htmlName={id}
+      label={label}
+      min={min}
+      max={max}
+      step={step}
+      value={value}
+      onChange={onChange}
+      formatValue={(current) => `${+current.toFixed(2)}`}
+      valueDisplay="text"
+    />
   );
 }
 
@@ -190,14 +183,14 @@ export function GraphControls({ section, idPrefix }) {
   const { settings, update } = useSettings();
   const g = settings.graph;
   return (
-    <>
+    <VStack gap={3} width="100%">
       {(GRAPH_TOGGLES[section] ?? []).map(([key, label]) => (
         <Toggle key={key} id={`${idPrefix}-${key}`} label={label} checked={g[key]} onChange={(v) => update('graph', { [key]: v })} />
       ))}
       {(GRAPH_SLIDERS[section] ?? []).map(([key, label, min, max, step]) => (
         <Slider key={key} id={`${idPrefix}-${key}`} label={label} min={min} max={max} step={step} value={g[key]} onChange={(v) => update('graph', { [key]: v })} />
       ))}
-    </>
+    </VStack>
   );
 }
 

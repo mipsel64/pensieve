@@ -2,7 +2,7 @@ import { useSyncExternalStore } from 'react';
 
 export const THEME_KEY = 'pensieve.theme';
 export const THEME_CHOICES = ['system', 'light', 'dark'];
-// Match --bg in style.css; the browser chrome (address bar) takes this color.
+// Match --color-background-body in themes/pensieve; the browser chrome (address bar) takes this color.
 export const THEME_COLORS = { light: '#f5ecd4', dark: '#1f1d1b' };
 
 export function normalizePreference(value) {
@@ -36,10 +36,8 @@ export function writePreference(storage, preference) {
   }
 }
 
-/** Marks the root element and the browser chrome with the resolved theme. */
-export function applyTheme(root, meta, resolved) {
-  root.dataset.theme = resolved;
-  root.style.colorScheme = resolved;
+/** Paints the browser chrome with the resolved theme. Astryx's <Theme> owns `data-theme` once React runs. */
+export function applyThemeColor(meta, resolved) {
   if (meta) meta.setAttribute('content', THEME_COLORS[resolved]);
 }
 
@@ -47,7 +45,6 @@ const listeners = new Set();
 let preference = 'system';
 let resolved = 'light';
 let started = false;
-let switching = 0;
 
 const storage = () => {
   try {
@@ -58,18 +55,9 @@ const storage = () => {
 };
 const darkQuery = () => matchMedia('(prefers-color-scheme: dark)');
 
-function sync(animate) {
-  const next = resolveTheme(preference, darkQuery().matches);
-  if (next !== resolved || document.documentElement.dataset.theme !== next) {
-    const root = document.documentElement;
-    if (animate) {
-      root.dataset.themeSwitching = '';
-      clearTimeout(switching);
-      switching = setTimeout(() => delete root.dataset.themeSwitching, 220);
-    }
-    resolved = next;
-    applyTheme(root, document.querySelector('meta[name="theme-color"]'), next);
-  }
+function sync() {
+  resolved = resolveTheme(preference, darkQuery().matches);
+  applyThemeColor(document.querySelector('meta[name="theme-color"]'), resolved);
   for (const listener of listeners) listener();
 }
 
@@ -78,14 +66,12 @@ export function initTheme() {
   if (started) return;
   started = true;
   preference = readPreference(storage());
-  resolved = resolveTheme(preference, darkQuery().matches);
-  applyTheme(document.documentElement, document.querySelector('meta[name="theme-color"]'), resolved);
-  // Only the system choice follows the media query; resolveTheme ignores it otherwise.
-  darkQuery().addEventListener('change', () => preference === 'system' && sync(true));
+  sync();
+  darkQuery().addEventListener('change', sync);
   addEventListener('storage', (event) => {
     if (event.key !== THEME_KEY) return;
     preference = normalizePreference(event.newValue);
-    sync(true);
+    sync();
   });
 }
 
@@ -94,7 +80,7 @@ export function setPreference(choice) {
   if (next === preference) return;
   preference = next;
   writePreference(storage(), next);
-  sync(true);
+  sync();
 }
 
 const subscribe = (listener) => {
@@ -102,14 +88,23 @@ const subscribe = (listener) => {
   return () => listeners.delete(listener);
 };
 
-/** The stored choice, the theme it resolves to, and a setter. Re-renders when either changes. */
+/** The stored choice (pass it to <Theme mode>), the theme it resolves to, and a setter. Re-renders when either changes. */
 export function useTheme() {
   const choice = useSyncExternalStore(subscribe, () => preference);
   const theme = useSyncExternalStore(subscribe, () => resolved);
   return { preference: choice, resolved: theme, setPreference };
 }
 
-/** Computed value of a CSS custom property, for the canvas, which cannot read var(). */
+/**
+ * The computed color of a theme token, for the canvas, which cannot read var().
+ * Tokens are light-dark() pairs, so a probe element resolves them under the current color scheme.
+ */
 export function cssColor(name) {
-  return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  const probe = document.createElement('span');
+  probe.style.color = `var(${name})`;
+  probe.hidden = true;
+  document.body.append(probe);
+  const color = getComputedStyle(probe).color;
+  probe.remove();
+  return color;
 }
