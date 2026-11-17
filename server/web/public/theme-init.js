@@ -9,5 +9,5 @@
   if (choice === 'light' || choice === 'dark') root.setAttribute('data-theme', choice);
   var dark = choice === 'dark' || (choice !== 'light' && matchMedia('(prefers-color-scheme: dark)').matches);
   var meta = document.querySelector('meta[name="theme-color"]');
-  if (meta) meta.setAttribute('content', dark ? '#1f1d1b' : '#f5ecd4');
+  if (meta) meta.setAttribute('content', dark ? '#111111' : '#f5f4ed');
 })();

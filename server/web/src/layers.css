@@ -12,4 +12,10 @@
   #root {
     height: 100%;
   }
+
+  .ask-box-input {
+    background: transparent;
+    border-color: transparent;
+    box-shadow: none;
+  }
 }

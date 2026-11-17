@@ -337,7 +337,7 @@ function unquoteList(value) {
 /** The Pensieve mark: a basin with mist. It takes the surrounding text color. */
 export function Logo({ size = 28 }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 32 32" aria-hidden="true">
+    <svg width={size} height={size} viewBox="0 0 32 32" color="var(--color-text-accent)" aria-hidden="true">
       <path
         d="M12.8 13.2c-2.4-2.6.2-4.7 2.3-6.4 1.7-1.4 1.3-3.3-.3-4.3M18.6 13.4c1.7-2-.1-3.6 1.5-5.4.9-1 2.1-1.3 3.1-1"
         fill="none"

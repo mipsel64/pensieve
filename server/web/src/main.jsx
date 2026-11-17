@@ -48,10 +48,10 @@ import { ToastProvider, useToast } from './Toast.jsx';
 const GraphView = lazy(() => import('./Graph.jsx').then((m) => ({ default: m.GraphView })));
 
 /** The Astryx theme for an accent, in the stored appearance (System, Light or Dark). */
-function AppTheme({ accent = 'seaglass', children }) {
+function AppTheme({ accent = 'claude', children }) {
   const { preference } = useTheme();
   return (
-    <Theme theme={ACCENT_THEMES[accent] ?? ACCENT_THEMES.seaglass} mode={preference}>
+    <Theme theme={ACCENT_THEMES[accent] ?? ACCENT_THEMES.claude} mode={preference}>
       {children}
     </Theme>
   );
@@ -208,7 +208,7 @@ function Shell({ methods, onSignOut }) {
       endContent={
         <HStack gap={1} align="center">
           <Button
-            label="Search pages, commands"
+            label="Search"
             size="sm"
             icon={<Icon icon={SearchIcon} />}
             tooltip={`Command palette (${modifier} K)`}
@@ -245,21 +245,18 @@ function Shell({ methods, onSignOut }) {
   );
 
   const sideNav = (
-    <SideNav>
+    <SideNav footer={<SideNavItem label="Settings" icon={SettingsIcon} href={href('settings')} isSelected={view === 'settings'} />}>
       <SideNavSection title="Views" isHeaderHidden>
         {NAV.map(([id, label, NavIcon]) => (
           <SideNavItem key={id} label={label} icon={NavIcon} href={href(id)} isSelected={view === id} />
         ))}
-      </SideNavSection>
-      <SideNavSection title="Preferences" isHeaderHidden>
-        <SideNavItem label="Settings" icon={SettingsIcon} href={href('settings')} isSelected={view === 'settings'} />
       </SideNavSection>
     </SideNav>
   );
 
   return (
     <RouteContext.Provider value={route}>
-      <AppShell topNav={topNav} sideNav={sideNav} contentPadding={view === 'graph' ? 0 : 6}>
+      <AppShell topNav={topNav} sideNav={sideNav} contentPadding={view === 'graph' ? 0 : 6} variant="wash">
         <Fragment key={view}>
           <Suspense fallback={<Loading variant="page" />}>{content}</Suspense>
         </Fragment>

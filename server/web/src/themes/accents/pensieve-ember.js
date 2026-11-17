@@ -32,22 +32,22 @@ export const pensieveEmberTheme = {
     "--font-size-4xl": "2.1875rem",
     "--font-size-5xl": "2.625rem",
     "--text-heading-1-size": "var(--font-size-2xl)",
-    "--text-heading-1-weight": "var(--font-weight-semibold)",
+    "--text-heading-1-weight": "var(--font-weight-normal)",
     "--text-heading-1-leading": "1.3333",
     "--text-heading-2-size": "var(--font-size-xl)",
-    "--text-heading-2-weight": "var(--font-weight-semibold)",
+    "--text-heading-2-weight": "var(--font-weight-normal)",
     "--text-heading-2-leading": "1.4",
     "--text-heading-3-size": "var(--font-size-lg)",
-    "--text-heading-3-weight": "var(--font-weight-bold)",
+    "--text-heading-3-weight": "var(--font-weight-normal)",
     "--text-heading-3-leading": "1.4118",
     "--text-heading-4-size": "var(--font-size-base)",
-    "--text-heading-4-weight": "var(--font-weight-bold)",
+    "--text-heading-4-weight": "var(--font-weight-normal)",
     "--text-heading-4-leading": "1.4286",
     "--text-heading-5-size": "var(--font-size-sm)",
-    "--text-heading-5-weight": "var(--font-weight-semibold)",
+    "--text-heading-5-weight": "var(--font-weight-normal)",
     "--text-heading-5-leading": "1.6667",
     "--text-heading-6-size": "var(--font-size-xs)",
-    "--text-heading-6-weight": "var(--font-weight-semibold)",
+    "--text-heading-6-weight": "var(--font-weight-normal)",
     "--text-heading-6-leading": "1.6",
     "--text-body-size": "var(--font-size-base)",
     "--text-body-weight": "var(--font-weight-normal)",
@@ -93,7 +93,7 @@ export const pensieveEmberTheme = {
     "--_astryx-pre-tempo-duration-slow-max": "935ms",
     "--_astryx-motion-tempo": "1",
     "--font-family-body": "\"IBM Plex Sans Variable\", IBM Plex Sans, system-ui, -apple-system, Segoe UI, sans-serif",
-    "--font-family-heading": "\"IBM Plex Sans Variable\", IBM Plex Sans, system-ui, -apple-system, Segoe UI, sans-serif",
+    "--font-family-heading": "\"Iowan Old Style\", Palatino Linotype, Book Antiqua, Georgia, serif",
     "--font-family-code": "\"JetBrains Mono Variable\", JetBrains Mono, ui-monospace, SFMono-Regular, Menlo, monospace",
     "--color-syntax-keyword": "light-dark(#6b187c, #efa8ff)",
     "--color-syntax-string": "light-dark(#0b5615, #a4d6a3)",
@@ -114,20 +114,20 @@ export const pensieveEmberTheme = {
     "--color-syntax-diff-header": "transparent",
     "--color-syntax-added-marker": "var(--color-syntax-punctuation)",
     "--color-syntax-removed-marker": "var(--color-syntax-punctuation)",
-    "--color-background-surface": "light-dark(#faf4e1, #262320)",
-    "--color-background-body": "light-dark(#f5ecd4, #1f1d1b)",
-    "--color-background-card": "light-dark(#fbf6e6, #2b2826)",
-    "--color-background-popover": "light-dark(#fbf6e6, #2b2826)",
-    "--color-background-muted": "light-dark(#f1e6c9, #34302c)",
+    "--color-background-surface": "light-dark(#faf9f5, #151515)",
+    "--color-background-body": "light-dark(#f5f4ed, #111111)",
+    "--color-background-card": "light-dark(#f5f4ed, #20201f)",
+    "--color-background-popover": "light-dark(#faf9f5, #20201f)",
+    "--color-background-muted": "light-dark(#f0eee6, #212121)",
     "--color-accent": "light-dark(#c9763f, #c9763f)",
     "--color-accent-muted": "light-dark(#ffc7a5, #752e00)",
     "--color-neutral": "light-dark(#0000000F, #ffffff1A)",
     "--color-overlay": "light-dark(#00000080, #000000CC)",
     "--color-overlay-hover": "light-dark(#0000000d, #ffffff0d)",
     "--color-overlay-pressed": "light-dark(#0000001a, #ffffff1a)",
-    "--color-text-primary": "light-dark(#3c3836, #ebdbb2)",
-    "--color-text-secondary": "light-dark(#625a51, #b0a18b)",
-    "--color-text-disabled": "light-dark(#9d937a, #5b5341)",
+    "--color-text-primary": "light-dark(#141413, #f0efec)",
+    "--color-text-secondary": "light-dark(#6b6a65, #c3c2b8)",
+    "--color-text-disabled": "light-dark(#6b6a65, #898781)",
     "--color-text-accent": "light-dark(#974206, #feb283)",
     "--color-on-dark": "#ffffff",
     "--color-on-light": "#111111",
@@ -147,18 +147,18 @@ export const pensieveEmberTheme = {
     "--color-on-warning-muted": "light-dark(#553300, #f2bb79)",
     "--color-on-error-muted": "light-dark(#770000, #ffafa3)",
     "--color-icon-accent": "light-dark(#974206, #feb283)",
-    "--color-icon-primary": "light-dark(#3c3836, #ebdbb2)",
-    "--color-icon-secondary": "light-dark(#625a51, #b0a18b)",
-    "--color-icon-disabled": "light-dark(#9d937a, #5b5341)",
+    "--color-icon-primary": "light-dark(#141413, #f0efec)",
+    "--color-icon-secondary": "light-dark(#6b6a65, #c3c2b8)",
+    "--color-icon-disabled": "light-dark(#6b6a65, #898781)",
     "--color-success": "light-dark(#4f7d52, #4f7d52)",
     "--color-warning": "light-dark(#b57614, #b57614)",
     "--color-error": "light-dark(#cc241d, #fa8475)",
     "--color-success-muted": "light-dark(#bae0bb, #9ac69c3d)",
     "--color-error-muted": "light-dark(#ffc4bb, #ff988a3d)",
     "--color-warning-muted": "light-dark(#ffc98a, #e6ac643d)",
-    "--color-border": "light-dark(#dccfae, #3f3a35)",
-    "--color-border-emphasized": "light-dark(#857a62, #8a8176)",
-    "--color-skeleton": "light-dark(#f6f0e4, #5b5341)",
+    "--color-border": "light-dark(#e3e1d9, #292929)",
+    "--color-border-emphasized": "light-dark(#6b6a65, #898781)",
+    "--color-skeleton": "light-dark(#f0eee6, #292929)",
     "--color-shadow": "light-dark(#0000001A, #0000004D)",
     "--color-tint-hover": "light-dark(#000000, #ffffff)",
     "--color-background-red": "light-dark(#ffc4be, #5b2b28)",
@@ -204,8 +204,8 @@ export const pensieveEmberTheme = {
     "--radius-none": "0px",
     "--radius-inner": "6px",
     "--radius-element": "10px",
-    "--radius-container": "12px",
-    "--radius-page": "28px",
+    "--radius-container": "16px",
+    "--radius-page": "0px",
     "--radius-full": "9999px",
     "--shadow-low": "0 2px 4px light-dark(oklch(0 0 0 / 5%), oklch(0 0 0 / 25%)), 0 4px 8px light-dark(oklch(0 0 0 / 10%), oklch(0 0 0 / 40%)), inset 0 0 0 1px light-dark(transparent, oklch(1 0 0 / 8%))",
     "--shadow-med": "0 2px 4px light-dark(oklch(0 0 0 / 5%), oklch(0 0 0 / 35%)), 0 4px 12px light-dark(oklch(0 0 0 / 10%), oklch(0 0 0 / 50%)), inset 0 0 0 1px light-dark(transparent, oklch(1 0 0 / 12%))",
@@ -330,7 +330,7 @@ export const pensieveEmberTheme = {
     },
     "item": {
       "selected": {
-        "--color-text-secondary": "light-dark(#625a51, #b0a18b)"
+        "--color-text-secondary": "light-dark(#3d3d3a, #c3c2b8)"
       }
     },
     "tree-list-item": {
@@ -407,7 +407,7 @@ export const pensieveEmberTheme = {
     },
     "segmented-control-item": {
       "base": {
-        "--color-text-secondary": "light-dark(#625a51, #b0a18b)"
+        "--color-text-secondary": "light-dark(#3d3d3a, #c3c2b8)"
       },
       "size:sm": {
         "height": "calc(var(--size-element-sm) - 8px)"
@@ -440,6 +440,21 @@ export const pensieveEmberTheme = {
     "section": {
       "base": {
         "padding": "var(--spacing-3)"
+      }
+    },
+    "top-nav-heading": {
+      "base": {
+        "fontFamily": "var(--font-family-heading)",
+        "fontSize": "1.25rem",
+        "fontWeight": 400
+      }
+    },
+    "side-nav-item": {
+      "base": {
+        "borderRadius": "8px"
+      },
+      "selected": {
+        "backgroundColor": "var(--color-background-muted)"
       }
     }
   },
@@ -483,6 +498,24 @@ export const pensieveEmberTheme = {
             }
           }
         }
+      },
+      {
+        "when": {
+          "width": {
+            "below": "lg"
+          },
+          "pointer": "coarse"
+        },
+        "value": {
+          "tokens": {
+            "--text-heading-1-weight": "var(--font-weight-normal)",
+            "--text-heading-2-weight": "var(--font-weight-normal)",
+            "--text-heading-3-weight": "var(--font-weight-normal)",
+            "--text-heading-4-weight": "var(--font-weight-normal)",
+            "--text-heading-5-weight": "var(--font-weight-normal)",
+            "--text-heading-6-weight": "var(--font-weight-normal)"
+          }
+        }
       }
     ]
   },
@@ -497,8 +530,8 @@ export const pensieveEmberTheme = {
         "fallbacks": "IBM Plex Sans, system-ui, -apple-system, Segoe UI, sans-serif"
       },
       "heading": {
-        "family": "IBM Plex Sans Variable",
-        "fallbacks": "IBM Plex Sans, system-ui, -apple-system, Segoe UI, sans-serif",
+        "family": "Iowan Old Style",
+        "fallbacks": "Palatino Linotype, Book Antiqua, Georgia, serif",
         "weights": {
           "1": "var(--font-weight-semibold)",
           "2": "var(--font-weight-semibold)",

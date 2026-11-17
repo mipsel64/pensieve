@@ -3,7 +3,7 @@ import { useSyncExternalStore } from 'react';
 export const THEME_KEY = 'pensieve.theme';
 export const THEME_CHOICES = ['system', 'light', 'dark'];
 // Match --color-background-body in themes/pensieve; the browser chrome (address bar) takes this color.
-export const THEME_COLORS = { light: '#f5ecd4', dark: '#1f1d1b' };
+export const THEME_COLORS = { light: '#f5f4ed', dark: '#111111' };
 
 export function normalizePreference(value) {
   return THEME_CHOICES.includes(value) ? value : 'system';
