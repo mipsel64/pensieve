@@ -1,9 +1,29 @@
-import { lazy, StrictMode, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { createRoot } from 'react-dom/client';
-import { FileQuestion, Keyboard, LogOut, Search as SearchIcon, Settings as SettingsIcon } from 'lucide-react';
+import './layers.css';
+import '@astryxdesign/core/reset.css';
+import '@astryxdesign/core/astryx.css';
 import '@fontsource-variable/ibm-plex-sans/wght.css';
 import '@fontsource-variable/jetbrains-mono/wght.css';
-import './style.css';
+import { Fragment, lazy, StrictMode, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { createRoot } from 'react-dom/client';
+import { AppShell } from '@astryxdesign/core/AppShell';
+import { Button } from '@astryxdesign/core/Button';
+import {
+  DropdownMenu,
+  DropdownMenuDivider,
+  DropdownMenuGroup,
+  DropdownMenuItem,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+} from '@astryxdesign/core/DropdownMenu';
+import { Icon } from '@astryxdesign/core/Icon';
+import { IconButton } from '@astryxdesign/core/IconButton';
+import { Kbd } from '@astryxdesign/core/Kbd';
+import { SideNav, SideNavItem, SideNavSection } from '@astryxdesign/core/SideNav';
+import { HStack, VStack } from '@astryxdesign/core/Stack';
+import { Theme } from '@astryxdesign/core/theme';
+import { TopNav, TopNavHeading } from '@astryxdesign/core/TopNav';
+import { FileQuestion, Keyboard, LogOut, MoreHorizontal, Search as SearchIcon, Settings as SettingsIcon } from 'lucide-react';
+import { ACCENT_THEMES } from './accents.js';
 import { initTheme, nextPreference, useTheme } from './theme.js';
 import { api, authMethods, logout, Unauthorized } from './api.js';
 import { href, RouteContext, useHashRoute } from './router.js';
@@ -18,7 +38,6 @@ import { PageDrawer, PageView } from './Page.jsx';
 import { Settings } from './SettingsPage.jsx';
 import { SettingsProvider, useSettings } from './settings.jsx';
 import { THEME_OPTIONS } from './ThemeSwitch.jsx';
-import { Menu, MenuItem, MenuLabel, MenuSeparator } from './Menu.jsx';
 import { NAV, VIEW_LABELS } from './nav.js';
 import { Palette } from './Palette.jsx';
 import { ShortcutsHelp, useShortcuts } from './Shortcuts.jsx';
@@ -27,6 +46,20 @@ import { ToastProvider, useToast } from './Toast.jsx';
 
 // The graph library is most of the bundle; other views shouldn't wait for it.
 const GraphView = lazy(() => import('./Graph.jsx').then((m) => ({ default: m.GraphView })));
+
+/** The Astryx theme for an accent, in the stored appearance (System, Light or Dark). */
+function AppTheme({ accent = 'seaglass', children }) {
+  const { preference } = useTheme();
+  return (
+    <Theme theme={ACCENT_THEMES[accent] ?? ACCENT_THEMES.seaglass} mode={preference}>
+      {children}
+    </Theme>
+  );
+}
+
+function SettingsTheme({ children }) {
+  return <AppTheme accent={useSettings().settings.accent}>{children}</AppTheme>;
+}
 
 function App() {
   const [auth, setAuth] = useState({ state: 'checking' });
@@ -57,15 +90,27 @@ function App() {
       lock();
     });
 
-  if (auth.state === 'checking') return <Loading label="Connecting" />;
-  if (auth.state === 'error') return <ErrorNote error={auth.error} onRetry={check} />;
-  if (auth.state === 'out') return <Login methods={auth.methods ?? []} onSuccess={check} />;
+  if (auth.state !== 'in') {
+    return (
+      <AppTheme>
+        {auth.state === 'out' ? (
+          <Login methods={auth.methods ?? []} onSuccess={check} />
+        ) : (
+          <VStack height="100%" justify="center" align="center" padding={4}>
+            {auth.state === 'checking' ? <Loading label="Connecting" /> : <ErrorNote error={auth.error} onRetry={check} />}
+          </VStack>
+        )}
+      </AppTheme>
+    );
+  }
   return (
     <AuthContext.Provider value={lock}>
       <SettingsProvider initial={auth.settings}>
-        <ToastProvider>
-          <Shell methods={auth.methods} onSignOut={signOut} />
-        </ToastProvider>
+        <SettingsTheme>
+          <ToastProvider>
+            <Shell methods={auth.methods} onSignOut={signOut} />
+          </ToastProvider>
+        </SettingsTheme>
       </SettingsProvider>
     </AuthContext.Provider>
   );
@@ -74,7 +119,6 @@ function App() {
 function Shell({ methods, onSignOut }) {
   const route = useHashRoute();
   const { view, params } = route;
-  const main = useRef(null);
   const [overlay, setOverlay] = useState(null);
   const { flush } = useSettings();
   const { preference, setPreference } = useTheme();
@@ -87,6 +131,11 @@ function Shell({ methods, onSignOut }) {
     const name = params.page || (view === 'page' && params.title) || (view === 'search' && params.q) || VIEW_LABELS[view];
     document.title = `${name} · Pensieve`;
   }, [view, params.page, params.title, params.q]);
+
+  // AppShell keeps one main scroller (a role="main" region) for every view, so a new view would open at the old view's scroll position.
+  useLayoutEffect(() => {
+    document.querySelector('[role="main"]')?.scrollTo(0, 0);
+  }, [view]);
 
   const openHelp = useCallback(() => setOverlay('help'), []);
   const commands = useMemo(
@@ -152,82 +201,72 @@ function Shell({ methods, onSignOut }) {
     ),
   }[view];
 
-  const link = (id, label, Icon, key) => (
-    <a href={href(id)} aria-current={view === id ? 'page' : undefined} title={key ? `${label} (g ${key})` : label}>
-      <Icon size={17} aria-hidden="true" />
-      <span>{label}</span>
-    </a>
+  const topNav = (
+    <TopNav
+      label="Pensieve"
+      heading={<TopNavHeading heading="Pensieve" headingHref={href('search')} logo={<Logo size={22} />} />}
+      endContent={
+        <HStack gap={1} align="center">
+          <Button
+            label="Search pages, commands"
+            size="sm"
+            icon={<Icon icon={SearchIcon} />}
+            tooltip={`Command palette (${modifier} K)`}
+            onClick={() => setOverlay('palette')}
+          />
+          <DropdownMenu
+            hasChevron={false}
+            alignment="end"
+            renderTrigger={(props) => <IconButton {...props} label="More options" variant="ghost" icon={<Icon icon={MoreHorizontal} />} />}
+          >
+            <DropdownMenuGroup title="Appearance">
+              <DropdownMenuRadioGroup label="Appearance" value={preference} onChange={setPreference}>
+                {Object.entries(THEME_OPTIONS).map(([id, { label, Icon: ChoiceIcon }]) => (
+                  <DropdownMenuRadioItem key={id} value={id} label={label} icon={ChoiceIcon} />
+                ))}
+              </DropdownMenuRadioGroup>
+            </DropdownMenuGroup>
+            <DropdownMenuDivider />
+            <DropdownMenuItem label="Keyboard shortcuts" icon={Keyboard} endContent={<Kbd keys="?" />} onClick={openHelp} />
+            <DropdownMenuItem label="Settings" icon={SettingsIcon} href={href('settings')} />
+            <DropdownMenuDivider />
+            <DropdownMenuItem
+              label="Sign out"
+              icon={LogOut}
+              onClick={() => {
+                setSignOutError(null);
+                signOut().catch(setSignOutError);
+              }}
+            />
+          </DropdownMenu>
+        </HStack>
+      }
+    />
+  );
+
+  const sideNav = (
+    <SideNav>
+      <SideNavSection title="Views" isHeaderHidden>
+        {NAV.map(([id, label, NavIcon]) => (
+          <SideNavItem key={id} label={label} icon={NavIcon} href={href(id)} isSelected={view === id} />
+        ))}
+      </SideNavSection>
+      <SideNavSection title="Preferences" isHeaderHidden>
+        <SideNavItem label="Settings" icon={SettingsIcon} href={href('settings')} isSelected={view === 'settings'} />
+      </SideNavSection>
+    </SideNav>
   );
 
   return (
     <RouteContext.Provider value={route}>
-      <div className={`shell${params.page ? ' with-drawer' : ''}`}>
-        <a
-          className="skip"
-          href="#main-content"
-          onClick={(event) => {
-            event.preventDefault();
-            main.current?.focus();
-          }}
-        >
-          Skip to content
-        </a>
-        <nav className="sidebar" aria-label="Main">
-          <a className="brand" href={href('search')}>
-            <Logo size={24} />
-            <span>Pensieve</span>
-          </a>
-          <ul>
-            {NAV.map(([id, label, Icon, key]) => (
-              <li key={id}>{link(id, label, Icon, key)}</li>
-            ))}
-            <li className="nav-settings">{link('settings', 'Settings', SettingsIcon)}</li>
-          </ul>
-        </nav>
-        <div className="main-col">
-          <header className="topbar">
-            <a className="topbar-brand" href={href('search')} aria-label="Pensieve home">
-              <Logo size={22} />
-            </a>
-            <span className="topbar-title">{VIEW_LABELS[view]}</span>
-            <button type="button" className="palette-trigger" onClick={() => setOverlay('palette')} aria-label="Search pages, commands" title={`Command palette (${modifier} K)`}>
-              <SearchIcon size={14} aria-hidden="true" />
-              <span>Search pages, commands</span>
-              <kbd>{modifier} K</kbd>
-            </button>
-            <Menu label="More options">
-              <MenuLabel>Appearance</MenuLabel>
-              {Object.entries(THEME_OPTIONS).map(([id, { label, Icon }]) => (
-                <MenuItem key={id} icon={Icon} checked={preference === id} onSelect={() => setPreference(id)}>
-                  {label}
-                </MenuItem>
-              ))}
-              <MenuSeparator />
-              <MenuItem icon={Keyboard} hint="?" onSelect={openHelp}>
-                Keyboard shortcuts
-              </MenuItem>
-              <MenuItem icon={SettingsIcon} href={href('settings')}>
-                Settings
-              </MenuItem>
-              <MenuSeparator />
-              <MenuItem
-                icon={LogOut}
-                onSelect={() => {
-                  setSignOutError(null);
-                  signOut().catch(setSignOutError);
-                }}
-              >
-                Sign out
-              </MenuItem>
-            </Menu>
-          </header>
-          <main key={view} id="main-content" ref={main} tabIndex={-1} className={`content content-${view}`}>
-            <Suspense fallback={<Loading variant="page" />}>{content}</Suspense>
-          </main>
-        </div>
-        {params.page && <PageDrawer key={params.page} title={params.page} closeHref={href(view, { ...params, page: undefined })} />}
-      </div>
-      {overlay === 'palette' && <Palette commands={commands} onClose={() => setOverlay(null)} />}
+      <AppShell topNav={topNav} sideNav={sideNav} contentPadding={view === 'graph' ? 0 : 6}>
+        <Fragment key={view}>
+          <Suspense fallback={<Loading variant="page" />}>{content}</Suspense>
+        </Fragment>
+      </AppShell>
+      {params.page && <PageDrawer key={params.page} title={params.page} closeHref={href(view, { ...params, page: undefined })} />}
+      {/* A command the palette runs may open another overlay before the palette reports its own close. */}
+      {overlay === 'palette' && <Palette commands={commands} onClose={() => setOverlay((open) => (open === 'palette' ? null : open))} />}
       {overlay === 'help' && <ShortcutsHelp modifier={modifier} onClose={() => setOverlay(null)} />}
     </RouteContext.Provider>
   );

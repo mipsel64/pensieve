@@ -1,0 +1,114 @@
+{
+  "modeStrategy": "light-and-dark",
+  "families": [
+    {
+      "id": "accent",
+      "name": "Accent",
+      "seed": "#5fa48d",
+      "anchors": [
+        {
+          "mode": "light",
+          "stop": 60,
+          "color": "#5fa48d",
+          "policy": "exact"
+        },
+        {
+          "mode": "dark",
+          "stop": 60,
+          "color": "#5fa48d",
+          "policy": "exact"
+        }
+      ]
+    },
+    {
+      "id": "neutral",
+      "name": "Neutral",
+      "seed": "#857a62",
+      "kind": "neutral",
+      "anchors": [
+        {
+          "mode": "light",
+          "stop": 50,
+          "color": "#857a62",
+          "policy": "exact"
+        },
+        {
+          "mode": "dark",
+          "stop": 50,
+          "color": "#857a62",
+          "policy": "exact"
+        }
+      ]
+    },
+    {
+      "id": "success",
+      "name": "Success",
+      "seed": "#4f7d52",
+      "anchors": [
+        {
+          "mode": "light",
+          "stop": 45,
+          "color": "#4f7d52",
+          "policy": "exact"
+        },
+        {
+          "mode": "dark",
+          "stop": 45,
+          "color": "#4f7d52",
+          "policy": "exact"
+        }
+      ]
+    },
+    {
+      "id": "warning",
+      "name": "Warning",
+      "seed": "#b57614",
+      "anchors": [
+        {
+          "mode": "light",
+          "stop": 55,
+          "color": "#b57614",
+          "policy": "exact"
+        },
+        {
+          "mode": "dark",
+          "stop": 55,
+          "color": "#b57614",
+          "policy": "exact"
+        }
+      ]
+    },
+    {
+      "id": "danger",
+      "name": "Danger",
+      "seed": "#cc241d",
+      "anchors": [
+        {
+          "mode": "light",
+          "stop": 45,
+          "color": "#cc241d",
+          "policy": "exact"
+        }
+      ]
+    },
+    {
+      "id": "info",
+      "name": "Info",
+      "seed": "#4f9396",
+      "anchors": [
+        {
+          "mode": "light",
+          "stop": 55,
+          "color": "#4f9396",
+          "policy": "exact"
+        },
+        {
+          "mode": "dark",
+          "stop": 55,
+          "color": "#4f9396",
+          "policy": "exact"
+        }
+      ]
+    }
+  ]
+}

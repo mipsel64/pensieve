@@ -1,13 +1,25 @@
-import { useCallback, useContext, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { FileQuestion, History, Link2, Maximize2, Network, X } from 'lucide-react';
+import { useCallback, useContext, useEffect, useId, useMemo, useRef, useState } from 'react';
+import { Breadcrumbs, BreadcrumbItem } from '@astryxdesign/core/Breadcrumbs';
+import { Badge } from '@astryxdesign/core/Badge';
+import { Drawer, DrawerHeader } from '@astryxdesign/core/Drawer';
+import { Grid } from '@astryxdesign/core/Grid';
+import { Icon } from '@astryxdesign/core/Icon';
+import { IconButton } from '@astryxdesign/core/IconButton';
+import { Layout, LayoutContent } from '@astryxdesign/core/Layout';
+import { List, ListItem } from '@astryxdesign/core/List';
+import { MetadataList, MetadataListItem } from '@astryxdesign/core/MetadataList';
+import { MoreMenu } from '@astryxdesign/core/MoreMenu';
+import { HStack, VStack } from '@astryxdesign/core/Stack';
+import { Heading, Text } from '@astryxdesign/core/Text';
+import { Copy, FileQuestion, History, Link2, Maximize2, Network } from 'lucide-react';
 import { query } from './api.js';
 import { href, RouteContext } from './router.js';
 import { isDailyJournal } from './journal.js';
-import { Menu, MenuItem } from './Menu.jsx';
-import { ReadingProgress, scrollToHeading, TocMenu, TocSide, useActiveHeading, useHeadings } from './Toc.jsx';
+import { PageOutline, ReadingProgress, scrollToHeading, useScrollContainer } from './Toc.jsx';
 import { useCopy } from './Toast.jsx';
 import { readingMinutes } from './toc.js';
 import { Empty, ErrorNote, Loading, Markdown, PageLink, RelTime, splitFrontmatter, TypeBadge, useResource } from './ui.jsx';
+import './Page.css';
 
 function usePage(title) {
   const page = useResource(`/pages/${encodeURIComponent(title)}`);
@@ -34,149 +46,75 @@ export function withoutTitle(body, title) {
 
 const WIDTH_KEY = 'pensieve.drawerWidth';
 const MIN_WIDTH = 320;
-// The view beside the panel keeps at least this much room.
-const MIN_CONTENT = 360;
+const DEFAULT_WIDTH = 640;
 
-function applyWidth(px) {
-  if (px) document.documentElement.style.setProperty('--drawer-w', `${px}px`);
-  else document.documentElement.style.removeProperty('--drawer-w');
-}
-
-// Per browser rather than in settings: the right width depends on this screen.
-function saveWidth(px) {
+function storedDrawerWidth() {
   try {
-    if (px) localStorage.setItem(WIDTH_KEY, px);
-    else localStorage.removeItem(WIDTH_KEY);
+    const saved = Number(localStorage.getItem(WIDTH_KEY));
+    return Number.isFinite(saved) && saved >= MIN_WIDTH ? saved : DEFAULT_WIDTH;
   } catch {
-    // Without storage (some private windows) the width lasts until reload.
+    return DEFAULT_WIDTH;
   }
-}
-
-try {
-  const saved = Number(localStorage.getItem(WIDTH_KEY));
-  if (Number.isFinite(saved) && saved >= MIN_WIDTH) applyWidth(saved);
-} catch {
-  // Same as no stored width.
-}
-
-function ResizeHandle() {
-  const handle = useRef(null);
-  const drag = useRef(null);
-  const [aria, setAria] = useState({ now: 0, max: 0 });
-
-  const limit = () => {
-    const nav = document.querySelector('.sidebar')?.getBoundingClientRect().right ?? 0;
-    return Math.round(matchMedia('(max-width: 1180px)').matches ? innerWidth * 0.92 : innerWidth - nav - MIN_CONTENT);
-  };
-  const clamp = (px, max) => Math.round(Math.min(Math.max(px, MIN_WIDTH), max));
-  const commit = (px) => {
-    applyWidth(px);
-    saveWidth(px);
-    setAria({ now: px ?? handle.current.parentElement.offsetWidth, max: limit() });
-  };
-  const endDrag = () => {
-    const d = drag.current;
-    drag.current = null;
-    document.body.classList.remove('resizing');
-    if (!d) return;
-    cancelAnimationFrame(d.frame);
-    if (d.width) commit(d.width);
-  };
-
-  useLayoutEffect(() => setAria({ now: handle.current.parentElement.offsetWidth, max: limit() }), []);
-  // Escape can close the panel mid-drag, before the pointer capture is released.
-  useEffect(() => endDrag, []);
-
-  return (
-    <div
-      ref={handle}
-      className="drawer-resize"
-      role="separator"
-      aria-orientation="vertical"
-      aria-label="Resize page panel"
-      aria-valuemin={MIN_WIDTH}
-      aria-valuemax={aria.max}
-      aria-valuenow={aria.now}
-      title="Drag to resize. Double-click to reset."
-      tabIndex={0}
-      onPointerDown={(e) => {
-        if (e.button !== 0) return;
-        e.preventDefault();
-        e.currentTarget.setPointerCapture(e.pointerId);
-        drag.current = { max: limit(), width: 0, frame: 0 };
-        document.body.classList.add('resizing');
-      }}
-      onPointerMove={(e) => {
-        const d = drag.current;
-        if (!d) return;
-        d.width = clamp(innerWidth - e.clientX, d.max);
-        d.frame ||= requestAnimationFrame(() => {
-          d.frame = 0;
-          applyWidth(d.width);
-          setAria({ now: d.width, max: d.max });
-        });
-      }}
-      onLostPointerCapture={endDrag}
-      onDoubleClick={() => commit(null)}
-      onKeyDown={(e) => {
-        const step = e.shiftKey ? 96 : 32;
-        const width = handle.current.parentElement.offsetWidth;
-        if (e.key === 'ArrowLeft') commit(clamp(width + step, limit()));
-        else if (e.key === 'ArrowRight') commit(clamp(width - step, limit()));
-        else if (e.key === 'Enter') commit(null);
-        else return;
-        e.preventDefault();
-      }}
-    />
-  );
 }
 
 export function PageDrawer({ title, closeHref }) {
   const p = usePage(title);
-  const heading = useRef(null);
-
-  useEffect(() => {
-    heading.current?.focus();
-    const onKey = (e) => e.key === 'Escape' && !e.defaultPrevented && (location.hash = closeHref);
-    addEventListener('keydown', onKey);
-    return () => removeEventListener('keydown', onKey);
-  }, [title, closeHref]);
+  const [width] = useState(storedDrawerWidth);
+  const name = p.data?.title ?? title;
+  const onOpenChange = useCallback(
+    (open) => {
+      if (!open) location.hash = closeHref;
+    },
+    [closeHref],
+  );
 
   return (
-    <aside className="drawer" aria-labelledby="drawer-title">
-      <ResizeHandle />
-      <header className="drawer-header">
-        <div className="drawer-title">
-          <h2 id="drawer-title" tabIndex={-1} ref={heading}>
-            {p.data?.title ?? title}
-          </h2>
-          {p.data && <PageMeta data={p.data} minutes={p.minutes} />}
-        </div>
-        <a className="icon-button" href={href('page', { title: p.data?.title ?? title })} aria-label="Open as full page" title="Open as full page">
-          <Maximize2 size={16} aria-hidden="true" />
-        </a>
-        {p.data && <PageMenu title={p.data.title} />}
-        <a className="icon-button" href={closeHref} aria-label="Close page" title="Close (Esc)">
-          <X size={18} aria-hidden="true" />
-        </a>
-      </header>
-
-      <div className="drawer-body">
-        <PageStatus page={p.page} title={title} />
-        {p.data && (
-          <>
-            <Properties fields={p.fields} missing={p.missing} />
-            <article className="prose">
-              <Markdown missing={p.missing} newestFirst={isDailyJournal(p.data)}>
-                {p.body}
-              </Markdown>
-            </article>
-            <LinkLists data={p.data} />
-            <RecentChanges changes={p.changes} />
-          </>
-        )}
-      </div>
-    </aside>
+    <Drawer isOpen hasScrim={false} side="end" width={width} label={name} onOpenChange={onOpenChange}>
+      <Layout
+        header={
+          <DrawerHeader
+            title={
+              <Text type="inherit" data-autofocus tabIndex={-1}>
+                {name}
+              </Text>
+            }
+            subtitle={p.data && <PageMeta data={p.data} minutes={p.minutes} />}
+            endContent={
+              <HStack gap={1} align="center">
+                <IconButton
+                  label="Open as full page"
+                  tooltip="Open as full page"
+                  variant="ghost"
+                  href={href('page', { title: name })}
+                  icon={<Icon icon={Maximize2} />}
+                />
+                {p.data && <PageMenu title={p.data.title} />}
+              </HStack>
+            }
+            onOpenChange={onOpenChange}
+          />
+        }
+        content={
+          <LayoutContent>
+            <VStack gap={6}>
+              <PageStatus page={p.page} title={title} />
+              {p.data && (
+                <>
+                  <Properties fields={p.fields} missing={p.missing} />
+                  <VStack as="article" aria-label="Page content">
+                    <Markdown missing={p.missing} newestFirst={isDailyJournal(p.data)}>
+                      {p.body}
+                    </Markdown>
+                  </VStack>
+                  <LinkLists data={p.data} />
+                  <RecentChanges changes={p.changes} />
+                </>
+              )}
+            </VStack>
+          </LayoutContent>
+        }
+      />
+    </Drawer>
   );
 }
 
@@ -188,18 +126,11 @@ export function PageView({ title }) {
   const heading = useRef(null);
   const prose = useRef(null);
   const name = p.data?.title ?? title;
+  const newestFirst = p.data ? isDailyJournal(p.data) : false;
+  const scrollContainer = useScrollContainer(prose, p.body);
   const sectionHref = useCallback((id) => href('page', { title: name, section: id }), [name]);
   const copySection = useCallback((id) => copy(new URL(sectionHref(id), location.href).href, 'Link to section copied'), [copy, sectionHref]);
-  const headings = useHeadings(prose, p.body);
-  const active = useActiveHeading(prose, headings);
-  const toc = {
-    items: headings,
-    active,
-    hrefFor: sectionHref,
-    onPick: (id) => {
-      if (scrollToHeading(prose, id)) history.replaceState(null, '', sectionHref(id));
-    },
-  };
+  const showSection = useCallback((id) => history.replaceState(null, '', sectionHref(id)), [sectionHref]);
 
   useEffect(() => {
     heading.current?.focus();
@@ -211,67 +142,71 @@ export function PageView({ title }) {
 
   return (
     <>
-      <ReadingProgress />
-      <div className="view page-view">
-        <article className="page-main" aria-labelledby="page-title">
-          <header className="page-header">
-            <div className="page-crumbs">
-              <nav aria-label="Breadcrumb">
-                <ol>
-                  <li>
-                    <a href={href('search')}>Memory</a>
-                  </li>
-                  {p.data && (
-                    <li>
-                      <TypeBadge kind={p.data.kind} />
-                    </li>
-                  )}
-                </ol>
-              </nav>
-              {p.data && <PageMenu title={p.data.title} />}
-            </div>
-            <h1 id="page-title" tabIndex={-1} ref={heading}>
-              {name}
-            </h1>
-            {p.data && <PageMeta data={p.data} minutes={p.minutes} badge={false} />}
-          </header>
-          <PageStatus page={p.page} title={title} />
-          {p.data && (
-            <>
-              {headings.length > 1 && <TocMenu {...toc} />}
-              <Properties fields={p.fields} missing={p.missing} />
-              <div ref={prose} className="prose page-prose">
-                <Markdown missing={p.missing} newestFirst={isDailyJournal(p.data)} onAnchor={copySection}>
-                  {p.body}
-                </Markdown>
-              </div>
-              <footer className="page-foot">
-                <LinkLists data={p.data} as="h2" />
-                <RecentChanges changes={p.changes} as="h2" />
-              </footer>
-            </>
-          )}
-        </article>
-        {headings.length > 1 && <TocSide {...toc} />}
-      </div>
+      <ReadingProgress scrollContainerRef={scrollContainer} content={p.body} />
+      <VStack as="article" className="page-view" gap={0} aria-labelledby="page-title">
+        <Layout
+          height="auto"
+          padding={0}
+          contentWidth="47.5rem"
+          content={
+            <LayoutContent isScrollable={false} padding={0}>
+              <VStack gap={6}>
+                <VStack as="header" gap={3}>
+                  <HStack justify="between" align="center" wrap="wrap" gap={2}>
+                    <Breadcrumbs variant="supporting">
+                      <BreadcrumbItem href={href('search')}>Memory</BreadcrumbItem>
+                      {p.data && (
+                        <BreadcrumbItem isCurrent>
+                          <TypeBadge kind={p.data.kind} />
+                        </BreadcrumbItem>
+                      )}
+                    </Breadcrumbs>
+                    {p.data && <PageMenu title={p.data.title} />}
+                  </HStack>
+                  <Heading level={1} id="page-title" tabIndex={-1} ref={heading} textWrap="balance">
+                    {name}
+                  </Heading>
+                  {p.data && <PageMeta data={p.data} minutes={p.minutes} badge={false} />}
+                </VStack>
+                <PageStatus page={p.page} title={title} />
+                {p.data && (
+                  <>
+                    <Properties fields={p.fields} missing={p.missing} />
+                    <VStack ref={prose} gap={0}>
+                      <Markdown missing={p.missing} newestFirst={newestFirst} onAnchor={copySection}>
+                        {p.body}
+                      </Markdown>
+                    </VStack>
+                  </>
+                )}
+              </VStack>
+            </LayoutContent>
+          }
+        />
+        {p.data && (
+          <VStack as="aside" className="page-sidebar" gap={6} aria-label="Page details">
+            <PageOutline body={p.body} newestFirst={newestFirst} scrollContainerRef={scrollContainer} onNavigate={showSection} />
+            <LinkLists data={p.data} as={2} />
+            <RecentChanges changes={p.changes} as={2} />
+          </VStack>
+        )}
+      </VStack>
     </>
   );
 }
 
 function PageMeta({ data, minutes, badge = true }) {
   return (
-    <div className="meta-row">
-      {badge && <TypeBadge kind={data.kind} />}
-      {data.confidence && <span className="chip">confidence {data.confidence}</span>}
-      <span>rev {data.rev}</span>
-      <span>
-        updated <RelTime iso={data.updated_at} /> by <span className="mono">{data.updated_by}</span>
-      </span>
-      <span>{minutes} min read</span>
-      <span>
-        visited <RelTime iso={data.visited_at} />
-      </span>
-    </div>
+    <Text type="supporting" color="secondary">
+      {badge && (
+        <>
+          <TypeBadge kind={data.kind} />{' '}
+        </>
+      )}
+      {data.confidence && <>confidence {data.confidence} · </>}
+      rev {data.rev} · updated <RelTime iso={data.updated_at} /> by <Text type="code" color="inherit">{data.updated_by}</Text> · {minutes} min read · visited{' '}
+      <RelTime iso={data.visited_at} />
+    </Text>
   );
 }
 
@@ -290,84 +225,81 @@ function PageStatus({ page, title }) {
 
 function PageMenu({ title }) {
   const copy = useCopy();
-  return (
-    <Menu label="Page actions">
-      <MenuItem icon={History} href={href('timeline', { title })}>
-        History
-      </MenuItem>
-      <MenuItem icon={Network} href={href('graph', { focus: title, page: title })}>
-        Show in graph
-      </MenuItem>
-      <MenuItem icon={Link2} onSelect={() => copy(new URL(href('page', { title }), location.href).href, 'Link copied')}>
-        Copy link
-      </MenuItem>
-    </Menu>
-  );
+  const items = [
+    { label: 'History', icon: History, href: href('timeline', { title }) },
+    { label: 'Show in graph', icon: Network, href: href('graph', { focus: title, page: title }) },
+    { label: 'Copy link', icon: Link2, onClick: () => copy(new URL(href('page', { title }), location.href).href, 'Link copied') },
+    { label: 'Copy title', icon: Copy, onClick: () => copy(title, 'Title copied') },
+  ];
+  return <MoreMenu label="Page actions" items={items} alignment="end" presentation="adaptive" variant="ghost" size="sm" />;
 }
 
 function Properties({ fields, missing }) {
   if (!fields.length) return null;
   return (
-    <dl className="properties">
+    <MetadataList columns="multi" label={{ position: 'top' }}>
       {fields.map(([key, value]) => (
-        <div key={key}>
-          <dt>{key}</dt>
-          <dd>
-            <Markdown missing={missing}>{value}</Markdown>
-          </dd>
-        </div>
+        <MetadataListItem key={key} label={key}>
+          <Markdown missing={missing}>{value}</Markdown>
+        </MetadataListItem>
       ))}
-    </dl>
+    </MetadataList>
   );
 }
 
-function LinkLists({ data, as: Heading = 'h3' }) {
+function LinkLists({ data, as = 3 }) {
   const ids = useId();
   const lists = [
-    ['Backlinks', data.backlinks.map((t) => ({ title: t, missing: false })), 'No other page links here yet.'],
-    ['Links', data.links.map((l) => ({ title: l.title, missing: !l.exists })), 'This page links to nothing.'],
+    ['Backlinks', data.backlinks.map((title) => ({ title, missing: false })), 'No other page links here yet.'],
+    ['Links', data.links.map((link) => ({ title: link.title, missing: !link.exists })), 'This page links to nothing.'],
   ];
   return (
-    <div className="link-lists">
+    <Grid columns={{ minWidth: 240, max: 2 }} gap={4}>
       {lists.map(([label, items, none]) => (
-        <section key={label} aria-labelledby={`${ids}-${label}`}>
-          <Heading id={`${ids}-${label}`}>
-            {label} <span className="count">{items.length}</span>
-          </Heading>
+        <VStack key={label} as="section" gap={2} aria-labelledby={`${ids}-${label}`}>
+          <HStack gap={2} align="center">
+            <Heading level={as} id={`${ids}-${label}`}>
+              {label}
+            </Heading>
+            <Badge label={items.length} />
+          </HStack>
           {items.length ? (
-            <ul className="link-chips">
+            <List density="compact" edge="flush">
               {items.map((item) => (
-                <li key={item.title}>
-                  <PageLink title={item.title} missing={item.missing} />
-                </li>
+                <ListItem key={item.title} label={<PageLink title={item.title} missing={item.missing} />} />
               ))}
-            </ul>
+            </List>
           ) : (
-            <p className="muted small">{none}</p>
+            <Text type="supporting" color="secondary">
+              {none}
+            </Text>
           )}
-        </section>
+        </VStack>
       ))}
-    </div>
+    </Grid>
   );
 }
 
-function RecentChanges({ changes, as: Heading = 'h3' }) {
+function RecentChanges({ changes, as = 3 }) {
   if (changes.error) return <ErrorNote error={changes.error} onRetry={changes.reload} />;
   if (!changes.data?.length) return null;
   return (
-    <section className="recent-changes">
-      <Heading>Recent changes</Heading>
-      <ol>
-        {changes.data.map((r) => (
-          <li key={r.seq}>
-            <span className="mono">rev {r.rev}</span> {r.summary ?? <span className="muted">No summary</span>}
-            <span className="muted">
-              {' '}
-              · {r.by} · <RelTime iso={r.at} />
-            </span>
-          </li>
+    <VStack as="section" gap={2}>
+      <Heading level={as}>Recent changes</Heading>
+      <List density="compact" edge="flush">
+        {changes.data.map((change) => (
+          <ListItem
+            key={change.seq}
+            align="start"
+            label={change.summary ?? <Text color="secondary">No summary</Text>}
+            description={
+              <Text type="supporting" color="secondary">
+                <Text type="code" color="inherit">rev {change.rev}</Text> · {change.by} · <RelTime iso={change.at} />
+              </Text>
+            }
+          />
         ))}
-      </ol>
-    </section>
+      </List>
+    </VStack>
   );
 }

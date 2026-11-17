@@ -1,6 +1,18 @@
 import { useState } from 'react';
-import { Check, Copy, Loader2, LogOut, RotateCcw } from 'lucide-react';
+import { Banner } from '@astryxdesign/core/Banner';
+import { Button } from '@astryxdesign/core/Button';
+import { TextInput } from '@astryxdesign/core/TextInput';
+import { Grid } from '@astryxdesign/core/Grid';
+import { Icon } from '@astryxdesign/core/Icon';
+import { List, ListItem } from '@astryxdesign/core/List';
+import { RadioList, RadioListItem } from '@astryxdesign/core/RadioList';
+import { Spinner } from '@astryxdesign/core/Spinner';
+import { HStack, VStack } from '@astryxdesign/core/Stack';
+import { Heading, Text } from '@astryxdesign/core/Text';
+import { Theme } from '@astryxdesign/core/theme';
+import { Check, Copy, LogOut, RotateCcw } from 'lucide-react';
 import { ThemeSegmented } from './ThemeSwitch.jsx';
+import { ACCENT_THEMES } from './accents.js';
 import { api } from './api.js';
 import { Empty, ErrorNote, Loading, RelTime, useResource } from './ui.jsx';
 import { useCopy } from './Toast.jsx';
@@ -11,74 +23,92 @@ const MODE_LABELS = {
   keywords: 'Pages: whole pages ranked by their words',
 };
 
+function SettingsSection({ titleId, children }) {
+  return (
+    <VStack as="section" gap={4} aria-labelledby={titleId}>
+      {children}
+    </VStack>
+  );
+}
+
 export function Settings({ oauth, onSignOut }) {
   const { settings, update, status, retry } = useSettings();
   const [signOutError, setSignOutError] = useState(null);
 
   return (
-    <div className="view settings">
-      <header className="view-header">
-        <h1>Settings</h1>
-        <p className="muted">Saved on the server, so every browser you sign in from uses them.</p>
-      </header>
+    <VStack gap={6} maxWidth="73.75rem">
+      <VStack gap={1}>
+        <Heading level={1}>Settings</Heading>
+        <Text as="p" color="secondary">
+          Saved on the server, so every browser you sign in from uses them.
+        </Text>
+      </VStack>
       <SaveStatus status={status} onRetry={retry} />
 
-      <section className="card settings-section" aria-labelledby="appearance-title">
-        <h2 id="appearance-title">Appearance</h2>
-        <div className="appearance-row">
-          <span id="theme-label">Theme</span>
+      <SettingsSection titleId="appearance-title">
+        <Heading level={2} id="appearance-title">
+          Appearance
+        </Heading>
+        <HStack align="center" justify="between" wrap="wrap" gap={3}>
+          <Text id="theme-label">Theme</Text>
           <ThemeSegmented labelledBy="theme-label" />
-        </div>
-        <p className="muted small">Saved in this browser only. System follows your device setting.</p>
-        <fieldset className="swatches">
-          <legend>Accent</legend>
+        </HStack>
+        <Text as="p" type="supporting" color="secondary">
+          Saved in this browser only. System follows your device setting.
+        </Text>
+        <RadioList label="Accent" value={settings.accent} onChange={(accent) => update(null, { accent })} htmlName="accent">
           {Object.entries(ACCENTS).map(([id, { label }]) => (
-            <label key={id} className="swatch">
-              <input type="radio" name="accent" value={id} checked={settings.accent === id} onChange={() => update(null, { accent: id })} />
-              <span className="swatch-color" style={{ background: `var(--accent-${id})` }} aria-hidden="true" />
-              {label}
-            </label>
+            <RadioListItem
+              key={id}
+              value={id}
+              label={label}
+              startContent={
+                <Theme theme={ACCENT_THEMES[id]}>
+                  <Text color="accent" size="xl" aria-hidden="true">
+                    ●
+                  </Text>
+                </Theme>
+              }
+            />
           ))}
-        </fieldset>
-      </section>
+        </RadioList>
+      </SettingsSection>
 
-      <section className="card settings-section" aria-labelledby="search-title">
-        <h2 id="search-title">Search</h2>
-        <fieldset className="choices">
-          <legend>When you press Enter</legend>
+      <SettingsSection titleId="search-title">
+        <Heading level={2} id="search-title">
+          Search
+        </Heading>
+        <RadioList label="When you press Enter" value={settings.search.mode} onChange={(mode) => update('search', { mode })} htmlName="search-mode">
           {SEARCH_MODES.map((id) => (
-            <label key={id} className="choice">
-              <input type="radio" name="search-mode" value={id} checked={settings.search.mode === id} onChange={() => update('search', { mode: id })} />
-              {MODE_LABELS[id]}
-            </label>
+            <RadioListItem key={id} value={id} label={MODE_LABELS[id]} />
           ))}
-        </fieldset>
+        </RadioList>
         <Toggle id="settings-rerank" label="Rerank page results with Jev, when the server has a key" checked={settings.search.rerank} onChange={(v) => update('search', { rerank: v })} />
-      </section>
+      </SettingsSection>
 
-      <section className="card settings-section" aria-labelledby="graph-title">
-        <div className="settings-section-head">
-          <h2 id="graph-title">Graph</h2>
-          <button type="button" className="ghost" onClick={() => resetGraph(update)}>
-            <RotateCcw size={15} aria-hidden="true" /> Restore defaults
-          </button>
-        </div>
-        <div className="settings-columns">
-          <div>
-            <h3>Filters and groups</h3>
+      <SettingsSection titleId="graph-title">
+        <HStack align="center" justify="between" wrap="wrap" gap={3}>
+          <Heading level={2} id="graph-title">
+            Graph
+          </Heading>
+          <Button label="Restore defaults" variant="ghost" size="sm" icon={<Icon icon={RotateCcw} />} onClick={() => resetGraph(update)} />
+        </HStack>
+        <Grid columns={{ minWidth: 240, max: 3 }} gap={6} align="start">
+          <VStack gap={3}>
+            <Heading level={3}>Filters and groups</Heading>
             <GraphControls section="filters" idPrefix="settings" />
             <GraphControls section="groups" idPrefix="settings" />
-          </div>
-          <div>
-            <h3>Display</h3>
+          </VStack>
+          <VStack gap={3}>
+            <Heading level={3}>Display</Heading>
             <GraphControls section="display" idPrefix="settings" />
-          </div>
-          <div>
-            <h3>Forces</h3>
+          </VStack>
+          <VStack gap={3}>
+            <Heading level={3}>Forces</Heading>
             <GraphControls section="forces" idPrefix="settings" />
-          </div>
-        </div>
-      </section>
+          </VStack>
+        </Grid>
+      </SettingsSection>
 
       {oauth && (
         <>
@@ -87,26 +117,27 @@ export function Settings({ oauth, onSignOut }) {
         </>
       )}
 
-      <section className="card settings-section" aria-labelledby="session-title">
-        <h2 id="session-title">Session</h2>
-        <p className="muted">This browser stays signed in for 30 days. Signing out here doesn't affect other browsers or agents.</p>
-        {signOutError && (
-          <p className="field-error" role="alert">
-            Couldn't sign out: {signOutError.message}
-          </p>
-        )}
-        <button
-          type="button"
-          className="ghost"
-          onClick={() => {
-            setSignOutError(null);
-            onSignOut().catch(setSignOutError);
-          }}
-        >
-          <LogOut size={16} aria-hidden="true" /> Sign out
-        </button>
-      </section>
-    </div>
+      <SettingsSection titleId="session-title">
+        <Heading level={2} id="session-title">
+          Session
+        </Heading>
+        <Text as="p" color="secondary">
+          This browser stays signed in for 30 days. Signing out here doesn't affect other browsers or agents.
+        </Text>
+        {signOutError && <InlineError title="Couldn't sign out" message={signOutError.message} />}
+        <HStack>
+          <Button
+            label="Sign out"
+            variant="secondary"
+            icon={<Icon icon={LogOut} />}
+            onClick={() => {
+              setSignOutError(null);
+              onSignOut().catch(setSignOutError);
+            }}
+          />
+        </HStack>
+      </SettingsSection>
+    </VStack>
   );
 }
 
@@ -129,36 +160,47 @@ function ConnectedApps() {
   }
 
   return (
-    <section className="card settings-section" aria-labelledby="connected-apps-title">
-      <h2 id="connected-apps-title">Connected apps</h2>
-      <p className="muted">Apps you approved can read and change all of Pensieve's memory.</p>
+    <SettingsSection titleId="connected-apps-title">
+      <Heading level={2} id="connected-apps-title">
+        Connected apps
+      </Heading>
+      <Text as="p" color="secondary">
+        Apps you approved can read and change all of Pensieve's memory.
+      </Text>
       {loading && !data && <Loading label="Loading connected apps" />}
       {error && <ErrorNote error={error} onRetry={reload} />}
       {data?.length === 0 && <Empty>No connected apps.</Empty>}
       {data?.length > 0 && (
-        <ul className="grant-list">
+        <List hasDividers edge="flush">
           {data.map((grant) => (
-            <li className="grant" key={grant.id}>
-              <div className="grant-details">
-                <strong>{grant.client_name}</strong>
-                <span className="muted">{grant.email}</span>
-                <span className="muted small">
-                  Approved <RelTime iso={grant.created_at} /> · Last refreshed <RelTime iso={grant.refreshed_at} />
-                </span>
-              </div>
-              <button type="button" className="ghost" disabled={revoking !== null} onClick={() => revoke(grant.id)}>
-                {revoking === grant.id ? 'Revoking…' : 'Revoke'}
-              </button>
-            </li>
+            <ListItem
+              key={grant.id}
+              align="start"
+              label={<Text weight="semibold">{grant.client_name}</Text>}
+              description={
+                <VStack gap={0.5}>
+                  <Text color="secondary">{grant.email}</Text>
+                  <Text type="supporting" color="secondary">
+                    Approved <RelTime iso={grant.created_at} /> · Last refreshed <RelTime iso={grant.refreshed_at} />
+                  </Text>
+                </VStack>
+              }
+              endContent={
+                <Button
+                  label={revoking === grant.id ? 'Revoking…' : 'Revoke'}
+                  variant="ghost"
+                  size="sm"
+                  isLoading={revoking === grant.id}
+                  isDisabled={revoking !== null}
+                  onClick={() => revoke(grant.id)}
+                />
+              }
+            />
           ))}
-        </ul>
+        </List>
       )}
-      {revokeError && (
-        <p className="field-error" role="alert">
-          Couldn't revoke the app: {revokeError.message}
-        </p>
-      )}
-    </section>
+      {revokeError && <InlineError title="Couldn't revoke the app" message={revokeError.message} />}
+    </SettingsSection>
   );
 }
 
@@ -203,90 +245,111 @@ function ApiTokens() {
   }
 
   return (
-    <section className="card settings-section" aria-labelledby="api-tokens-title">
-      <h2 id="api-tokens-title">API tokens</h2>
-      <p className="muted">Tokens act like you on /api and /mcp until revoked. Use them for scripts and plugins such as pi-pensieve.</p>
+    <SettingsSection titleId="api-tokens-title">
+      <Heading level={2} id="api-tokens-title">
+        API tokens
+      </Heading>
+      <Text as="p" color="secondary">
+        Tokens act like you on /api and /mcp until revoked. Use them for scripts and plugins such as pi-pensieve.
+      </Text>
       {loading && !data && <Loading label="Loading API tokens" />}
       {error && <ErrorNote error={error} onRetry={reload} />}
       {data?.length === 0 && <Empty>No API tokens.</Empty>}
       {data?.length > 0 && (
-        <ul className="grant-list">
+        <List hasDividers edge="flush">
           {data.map((token) => (
-            <li className="grant" key={token.id}>
-              <div className="grant-details">
-                <strong>{token.name}</strong>
-                <span className="muted">{token.email}</span>
-                <span className="muted small">
-                  Created <RelTime iso={token.created_at} />
-                </span>
-              </div>
-              <button type="button" className="ghost" disabled={revoking !== null} onClick={() => revoke(token.id)}>
-                {revoking === token.id ? 'Revoking…' : 'Revoke'}
-              </button>
-            </li>
+            <ListItem
+              key={token.id}
+              align="start"
+              label={<Text weight="semibold">{token.name}</Text>}
+              description={
+                <VStack gap={0.5}>
+                  <Text color="secondary">{token.email}</Text>
+                  <Text type="supporting" color="secondary">
+                    Created <RelTime iso={token.created_at} />
+                  </Text>
+                </VStack>
+              }
+              endContent={
+                <Button
+                  label={revoking === token.id ? 'Revoking…' : 'Revoke'}
+                  variant="ghost"
+                  size="sm"
+                  isLoading={revoking === token.id}
+                  isDisabled={revoking !== null}
+                  onClick={() => revoke(token.id)}
+                />
+              }
+            />
           ))}
-        </ul>
+        </List>
       )}
-      {revokeError && (
-        <p className="field-error" role="alert">
-          Couldn't revoke the API token: {revokeError.message}
-        </p>
-      )}
-      <form className="api-token-form" onSubmit={create}>
-        <label className="api-token-name" htmlFor="api-token-name">
-          <span>Name</span>
-          <span className="field">
-            <input id="api-token-name" value={name} required maxLength={100} disabled={creating} onChange={(event) => setName(event.target.value)} />
-          </span>
-        </label>
-        <button type="submit" className="primary" disabled={creating}>
-          {creating ? 'Creating…' : 'Create'}
-        </button>
-      </form>
-      {createError && (
-        <p className="field-error" role="alert">
-          {createError.message}
-        </p>
-      )}
+      {revokeError && <InlineError title="Couldn't revoke the API token" message={revokeError.message} />}
+      <HStack as="form" onSubmit={create} align="end" wrap="wrap" gap={2}>
+        <TextInput
+          id="api-token-name"
+          label="Name"
+          isRequired
+          required
+          maxLength={100}
+          isDisabled={creating}
+          value={name}
+          onChange={setName}
+          width="min(18rem, 100%)"
+        />
+        <Button type="submit" label={creating ? 'Creating…' : 'Create'} variant="primary" isLoading={creating} isDisabled={creating} />
+      </HStack>
+      {createError && <InlineError title="Couldn't create the API token" message={createError.message} />}
       {created && (
-        <div className="api-token-created">
-          <label htmlFor="created-api-token">New API token</label>
-          <div className="api-token-value">
-            <span className="field">
-              <input id="created-api-token" readOnly value={created.token} onFocus={(event) => event.target.select()} />
-            </span>
-            <button type="button" className="ghost" onClick={() => copy(created.token, 'API token copied')}>
-              <Copy size={15} aria-hidden="true" /> Copy
-            </button>
-          </div>
-          <p className="muted small">Copy it now. Pensieve shows it only once.</p>
-        </div>
+        <VStack gap={2} paddingBlockStart={3}>
+          <HStack align="end" wrap="wrap" gap={2}>
+            <TextInput
+              id="created-api-token"
+              label="New API token"
+              isReadOnly
+              value={created.token}
+              onFocus={(event) => event.target.select()}
+              width="min(32rem, 100%)"
+            />
+            <Button label="Copy" variant="secondary" icon={<Icon icon={Copy} />} onClick={() => copy(created.token, 'API token copied')} />
+          </HStack>
+          <Text as="p" type="supporting" color="secondary">
+            Copy it now. Pensieve shows it only once.
+          </Text>
+        </VStack>
       )}
-    </section>
+    </SettingsSection>
+  );
+}
+
+function InlineError({ title, message }) {
+  return (
+    <VStack role="alert">
+      <Banner status="error" title={title} description={message} />
+    </VStack>
   );
 }
 
 function SaveStatus({ status, onRetry }) {
   if (status.state === 'saving')
     return (
-      <p className="save-status" role="status">
-        <Loader2 className="spin" size={14} aria-hidden="true" /> Saving…
-      </p>
+      <HStack role="status" gap={2} align="center">
+        <Spinner size="sm" aria-label="Saving settings" />
+        <Text color="secondary">Saving…</Text>
+      </HStack>
     );
   if (status.state === 'saved')
     return (
-      <p className="save-status" role="status">
-        <Check size={14} aria-hidden="true" /> Saved
-      </p>
+      <HStack role="status" gap={2} align="center">
+        <Icon icon={Check} color="success" />
+        <Text color="secondary">Saved</Text>
+      </HStack>
     );
   if (status.state === 'error')
     return (
-      <p className="save-status error" role="alert">
-        Couldn't save: {status.error.message}{' '}
-        <button type="button" className="ghost" onClick={onRetry}>
-          Retry
-        </button>
-      </p>
+      <VStack role="alert">
+        <Banner status="error" title="Couldn't save settings" description={status.error.message} endContent={<Button label="Retry" size="sm" onClick={onRetry} />} />
+      </VStack>
     );
-  return <p className="save-status" aria-hidden="true" />;
+  return null;
 }

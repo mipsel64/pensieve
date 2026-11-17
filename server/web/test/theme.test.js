@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 import vm from 'node:vm';
-import { THEME_COLORS, THEME_KEY, applyTheme, nextPreference, normalizePreference, readPreference, resolveTheme, writePreference } from '../src/theme.js';
+import { THEME_COLORS, THEME_KEY, applyThemeColor, nextPreference, normalizePreference, readPreference, resolveTheme, writePreference } from '../src/theme.js';
 
 const memoryStorage = (initial = {}) => {
   const data = { ...initial };
@@ -53,45 +53,53 @@ test('the preference is stored under pensieve.theme and survives bad storage', (
   assert.doesNotThrow(() => writePreference(null, 'dark'));
 });
 
-test('applyTheme sets data-theme, color-scheme and the theme-color meta', () => {
+test('applyThemeColor paints the theme-color meta', () => {
   for (const theme of ['light', 'dark']) {
-    const root = { dataset: {}, style: {} };
     const attributes = {};
-    applyTheme(root, { setAttribute: (name, value) => (attributes[name] = value) }, theme);
-    assert.equal(root.dataset.theme, theme);
-    assert.equal(root.style.colorScheme, theme);
+    applyThemeColor({ setAttribute: (name, value) => (attributes[name] = value) }, theme);
     assert.equal(attributes.content, THEME_COLORS[theme]);
   }
-  assert.doesNotThrow(() => applyTheme({ dataset: {}, style: {} }, null, 'dark'));
+  assert.doesNotThrow(() => applyThemeColor(null, 'dark'));
 });
 
-test('the pre-paint script agrees with resolveTheme and the theme colors', () => {
+const fakeRoot = () => {
+  const attributes = {};
+  return { attributes, setAttribute: (name, value) => (attributes[name] = String(value)) };
+};
+
+// The script runs before Astryx's <Theme>, so it must set what <Theme mode> will: data-theme only for an explicit choice.
+test('the pre-paint script sets the Astryx theme attributes and the theme color', () => {
   const script = readFileSync(new URL('../public/theme-init.js', import.meta.url), 'utf8');
   for (const stored of [null, 'system', 'light', 'dark', 'junk']) {
     for (const systemDark of [false, true]) {
-      const root = { dataset: {}, style: {} };
-      const attributes = {};
-      const context = {
-        document: { documentElement: root, querySelector: () => ({ setAttribute: (name, value) => (attributes[name] = value) }) },
+      const root = fakeRoot();
+      const meta = {};
+      vm.runInNewContext(script, {
+        document: { documentElement: root, querySelector: () => ({ setAttribute: (name, value) => (meta[name] = value) }) },
         localStorage: { getItem: () => stored },
         matchMedia: () => ({ matches: systemDark }),
-      };
-      vm.runInNewContext(script, context);
-      const expected = resolveTheme(stored, systemDark);
-      assert.equal(root.dataset.theme, expected, `${stored} / dark=${systemDark}`);
-      assert.equal(root.style.colorScheme, expected);
-      assert.equal(attributes.content, THEME_COLORS[expected]);
+      });
+      const label = `${stored} / dark=${systemDark}`;
+      assert.equal(root.attributes['data-astryx-theme'], 'pensieve', label);
+      assert.equal(root.attributes['data-theme'], stored === 'light' || stored === 'dark' ? stored : undefined, label);
+      assert.equal(meta.content, THEME_COLORS[resolveTheme(stored, systemDark)], label);
     }
   }
 });
 
 test('the pre-paint script follows the system when storage throws', () => {
   const script = readFileSync(new URL('../public/theme-init.js', import.meta.url), 'utf8');
-  const root = { dataset: {}, style: {} };
+  const root = fakeRoot();
+  const meta = {};
   vm.runInNewContext(script, {
-    document: { documentElement: root, querySelector: () => null },
-    localStorage: { getItem: () => { throw new Error('blocked'); } },
+    document: { documentElement: root, querySelector: () => ({ setAttribute: (name, value) => (meta[name] = value) }) },
+    localStorage: {
+      getItem: () => {
+        throw new Error('blocked');
+      },
+    },
     matchMedia: () => ({ matches: true }),
   });
-  assert.equal(root.dataset.theme, 'dark');
+  assert.equal(root.attributes['data-theme'], undefined);
+  assert.equal(meta.content, THEME_COLORS.dark);
 });

@@ -1,0 +1,194 @@
+{
+  "name": "pensieve",
+  "like": "neutral",
+  "mode": "both",
+  "settings": [
+    {
+      "thing": "corners",
+      "value": "medium",
+      "source": "dial"
+    },
+    {
+      "thing": "accent",
+      "value": "#5fa48d",
+      "source": "dial"
+    },
+    {
+      "thing": "neutral",
+      "value": "#857a62",
+      "source": "dial"
+    },
+    {
+      "thing": "text-size",
+      "value": "medium",
+      "source": "dial"
+    },
+    {
+      "thing": "font",
+      "value": "'IBM Plex Sans Variable', 'IBM Plex Sans', system-ui, -apple-system, 'Segoe UI', sans-serif",
+      "source": "dial"
+    },
+    {
+      "thing": "font",
+      "value": "'JetBrains Mono Variable', 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace",
+      "source": "dial",
+      "on": "code"
+    },
+    {
+      "thing": "--color-background-body",
+      "value": "#f5ecd4",
+      "source": "token",
+      "mode": "light"
+    },
+    {
+      "thing": "--color-background-body",
+      "value": "#1f1d1b",
+      "source": "token",
+      "mode": "dark"
+    },
+    {
+      "thing": "--color-background-surface",
+      "value": "#faf4e1",
+      "source": "token",
+      "mode": "light"
+    },
+    {
+      "thing": "--color-background-surface",
+      "value": "#262320",
+      "source": "token",
+      "mode": "dark"
+    },
+    {
+      "thing": "--color-background-card",
+      "value": "#fbf6e6",
+      "source": "token",
+      "mode": "light"
+    },
+    {
+      "thing": "--color-background-card",
+      "value": "#2b2826",
+      "source": "token",
+      "mode": "dark"
+    },
+    {
+      "thing": "--color-background-popover",
+      "value": "#fbf6e6",
+      "source": "token",
+      "mode": "light",
+      "note": "no part of this Core reads --color-background-popover, and no token it feeds is read, so it changes nothing you see now; it is set as asked because a dial writes it too"
+    },
+    {
+      "thing": "--color-background-popover",
+      "value": "#2b2826",
+      "source": "token",
+      "mode": "dark",
+      "note": "no part of this Core reads --color-background-popover, and no token it feeds is read, so it changes nothing you see now; it is set as asked because a dial writes it too"
+    },
+    {
+      "thing": "--color-background-muted",
+      "value": "#f1e6c9",
+      "source": "token",
+      "mode": "light"
+    },
+    {
+      "thing": "--color-background-muted",
+      "value": "#34302c",
+      "source": "token",
+      "mode": "dark"
+    },
+    {
+      "thing": "--color-text-primary",
+      "value": "#3c3836",
+      "source": "token",
+      "mode": "light"
+    },
+    {
+      "thing": "--color-text-primary",
+      "value": "#ebdbb2",
+      "source": "token",
+      "mode": "dark"
+    },
+    {
+      "thing": "--color-text-secondary",
+      "value": "#625a51",
+      "source": "token",
+      "mode": "light"
+    },
+    {
+      "thing": "--color-text-secondary",
+      "value": "#b0a18b",
+      "source": "token",
+      "mode": "dark"
+    },
+    {
+      "thing": "--color-icon-primary",
+      "value": "#3c3836",
+      "source": "token",
+      "mode": "light"
+    },
+    {
+      "thing": "--color-icon-primary",
+      "value": "#ebdbb2",
+      "source": "token",
+      "mode": "dark"
+    },
+    {
+      "thing": "--color-icon-secondary",
+      "value": "#625a51",
+      "source": "token",
+      "mode": "light"
+    },
+    {
+      "thing": "--color-icon-secondary",
+      "value": "#b0a18b",
+      "source": "token",
+      "mode": "dark"
+    },
+    {
+      "thing": "--color-border",
+      "value": "#dccfae",
+      "source": "token",
+      "mode": "light"
+    },
+    {
+      "thing": "--color-border",
+      "value": "#3f3a35",
+      "source": "token",
+      "mode": "dark"
+    },
+    {
+      "thing": "--color-border-emphasized",
+      "value": "#857a62",
+      "source": "token",
+      "mode": "light"
+    },
+    {
+      "thing": "--color-border-emphasized",
+      "value": "#8a8176",
+      "source": "token",
+      "mode": "dark"
+    },
+    {
+      "thing": "danger",
+      "value": "#cc241d",
+      "source": "dial"
+    },
+    {
+      "thing": "warning",
+      "value": "#b57614",
+      "source": "dial"
+    },
+    {
+      "thing": "success",
+      "value": "#4f7d52",
+      "source": "dial"
+    },
+    {
+      "thing": "info",
+      "value": "#4f9396",
+      "source": "dial"
+    }
+  ],
+  "palette": "8f3b00085021dee6f423afb2d18060b3d1c561acc0cfc1698e7a490f4c827698",
+  "lifted": []
+}

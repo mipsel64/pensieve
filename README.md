@@ -46,7 +46,7 @@ PENSIEVE_TOKEN=... scripts/token-bench.py --url https://my-server.tailnet.ts.net
 
 [Releases](https://github.com/mipsel64/pensieve/releases) have `pensieve` for Linux (glibc 2.35 or newer) and macOS, on amd64 and arm64, with `pensieve.example.toml` and the service files from `examples/`. To run one without a checkout, copy the example config to `~/.config/pensieve/config.toml` (mode 0600), set `server.token` (`openssl rand -hex 32`), and run `pensieve serve`.
 
-To build from source instead, you need Rust and Node 22.18 or newer. The web UI (React and Vite, in `server/web`) is compiled into `pensieve`, so run `make` once before `cargo build` or `cargo test`.
+To build from source instead, you need Rust and Node 22.18 or newer. The web UI (React, Vite and the [Astryx](https://github.com/meta/astryx) design system, in `server/web`) is compiled into `pensieve`, so run `make` once before `cargo build` or `cargo test`. Its theme source is in `server/web/themes`; after changing it, run `npm run themes` in `server/web` to rebuild the theme files the UI imports.
 
 ```sh
 make setup      # installs pensieve to ~/.local/bin and starts the service

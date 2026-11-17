@@ -1,4 +1,9 @@
 import { useMemo } from 'react';
+import { Card } from '@astryxdesign/core/Card';
+import { Grid } from '@astryxdesign/core/Grid';
+import { List, ListItem } from '@astryxdesign/core/List';
+import { HStack, VStack } from '@astryxdesign/core/Stack';
+import { Heading, Text } from '@astryxdesign/core/Text';
 import { NotebookPen } from 'lucide-react';
 import { query } from './api.js';
 import { href } from './router.js';
@@ -32,46 +37,38 @@ export function Journal({ params }) {
   if (list.error) return <ErrorNote error={list.error} onRetry={list.reload} />;
 
   return (
-    <div className="view page-view">
-      <article className="page-main" aria-labelledby="page-title">
+    <Grid columns={{ minWidth: 320, max: 2 }} gap={6} align="start">
+      <VStack as="article" aria-labelledby="page-title" gap={5}>
         {day ? (
           <Day key={day} day={day} />
         ) : (
           <>
-            <header className="page-header">
-              <h1 id="page-title">Journal</h1>
-            </header>
+            <Heading level={1} id="page-title">Journal</Heading>
             <Empty icon={NotebookPen} title="No journal yet">
               pi-pensieve adds a summary of each Pi session here when the session ends.
             </Empty>
           </>
         )}
-      </article>
-      <aside className="page-side" aria-label="Scratchpad and days">
-        <section className="journal-scratchpad">
-          <h3>
-            <PageLink title="Scratchpad" />
-          </h3>
-          <PageBody resource={scratchpad} className="prose" empty="Nothing on the Scratchpad." />
-        </section>
+      </VStack>
+      <VStack as="aside" aria-label="Scratchpad and days" gap={5}>
+        <Card>
+          <VStack gap={3}>
+            <Heading level={2}><PageLink title="Scratchpad" /></Heading>
+            <PageBody resource={scratchpad} empty="Nothing on the Scratchpad." />
+          </VStack>
+        </Card>
         {days.length > 0 && (
-          <div className="link-lists journal-days">
-            <section>
-              <h3>Days</h3>
-              <ul>
-                {days.map((d) => (
-                  <li key={d}>
-                    <a href={href('journal', { ...params, day: d })} aria-current={d === day ? 'page' : undefined}>
-                      {d}
-                    </a>
-                  </li>
-                ))}
-              </ul>
-            </section>
-          </div>
+          <VStack as="section" gap={2}>
+            <Heading level={2}>Days</Heading>
+            <List hasDividers edge="flush">
+              {days.map((d) => (
+                <ListItem key={d} label={d} href={href('journal', { ...params, day: d })} isSelected={d === day} />
+              ))}
+            </List>
+          </VStack>
         )}
-      </aside>
-    </div>
+      </VStack>
+    </Grid>
   );
 }
 
@@ -80,23 +77,23 @@ function Day({ day }) {
   const entry = useResource(`/pages/${encodeURIComponent(`Journal ${day}`)}`);
   return (
     <>
-      <header className="page-header">
-        <h1 id="page-title">{formatDay(day)}</h1>
+      <VStack as="header" gap={3}>
+        <Heading level={1} id="page-title">{formatDay(day)}</Heading>
         {entry.data && (
-          <div className="meta-row">
-            <span>
-              updated <RelTime iso={entry.data.updated_at} /> by <span className="mono">{entry.data.updated_by}</span>
-            </span>
+          <HStack gap={3} align="center" wrap="wrap">
+            <Text type="supporting" color="secondary">
+              updated <RelTime iso={entry.data.updated_at} /> by <Text type="code">{entry.data.updated_by}</Text>
+            </Text>
             <PageLink title={entry.data.title}>Open page</PageLink>
-          </div>
+          </HStack>
         )}
-      </header>
-      <PageBody resource={entry} className="prose page-prose" empty="No journal for this day." newestFirst={isDailyJournal(entry.data)} />
+      </VStack>
+      <PageBody resource={entry} empty="No journal for this day." newestFirst={isDailyJournal(entry.data)} />
     </>
   );
 }
 
-function PageBody({ resource, className, empty, newestFirst = false }) {
+function PageBody({ resource, empty, newestFirst = false }) {
   if (resource.loading) return <Loading variant="article" />;
   if (resource.error) {
     return /cannot find page/i.test(resource.error.message) ? <Empty>{empty}</Empty> : <ErrorNote error={resource.error} onRetry={resource.reload} />;
@@ -104,9 +101,5 @@ function PageBody({ resource, className, empty, newestFirst = false }) {
   if (!resource.data) return null;
   const { title, content, links } = resource.data;
   const missing = new Set(links.filter((l) => !l.exists).map((l) => l.title.toLowerCase()));
-  return (
-    <div className={className}>
-      <Markdown missing={missing} newestFirst={newestFirst}>{withoutTitle(splitFrontmatter(content)[1], title)}</Markdown>
-    </div>
-  );
+  return <Markdown missing={missing} newestFirst={newestFirst}>{withoutTitle(splitFrontmatter(content)[1], title)}</Markdown>;
 }

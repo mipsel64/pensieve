@@ -1,0 +1,15 @@
+/* First stylesheet: fixes the cascade order before Astryx's own files declare theirs. `app` holds the few rules no component covers. */
+@layer reset, astryx-base, astryx-theme, app;
+
+@layer app {
+  /* Before React mounts the shell, the page already takes the theme's background. */
+  html {
+    background: var(--color-background-body);
+  }
+
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+}

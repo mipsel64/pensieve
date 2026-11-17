@@ -1,0 +1,121 @@
+@layer app {
+  .dashboard-bars {
+    display: grid;
+    gap: var(--spacing-2);
+    margin: var(--spacing-0);
+    padding: var(--spacing-0);
+    list-style: none;
+  }
+
+  .dashboard-bars > li {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    gap: var(--spacing-2);
+    align-items: center;
+  }
+
+  .dashboard-bar-label {
+    min-width: 0;
+  }
+
+  .dashboard-bar-track {
+    height: var(--spacing-2);
+    overflow: hidden;
+    border-radius: var(--radius-full);
+    background: var(--color-background-muted);
+  }
+
+  .dashboard-bar-fill {
+    display: block;
+    height: 100%;
+    border-radius: inherit;
+  }
+
+  .dashboard-bar-value {
+    font-family: var(--font-family-code);
+    font-size: var(--font-size-sm);
+    font-variant-numeric: tabular-nums;
+    text-align: end;
+    white-space: nowrap;
+  }
+
+  .dashboard-heatmap-scroll {
+    overflow-x: auto;
+    padding-block-end: var(--spacing-1);
+  }
+
+  .dashboard-heatmap {
+    display: grid;
+    grid-template-areas: '. months' 'days grid';
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: var(--spacing-1) var(--spacing-2);
+    width: 100%;
+    min-width: calc(var(--spacing-10) * 16);
+  }
+
+  .dashboard-heatmap-months,
+  .dashboard-heatmap-grid {
+    display: grid;
+    grid-template-columns: repeat(53, minmax(0, 1fr));
+    gap: var(--spacing-0-5);
+  }
+
+  .dashboard-heatmap-months {
+    grid-area: months;
+    color: var(--color-text-secondary);
+    font-size: var(--font-size-xs);
+    white-space: nowrap;
+  }
+
+  .dashboard-heatmap-days {
+    display: grid;
+    grid-area: days;
+    grid-template-rows: repeat(7, 1fr);
+    gap: var(--spacing-0-5);
+    align-items: center;
+    color: var(--color-text-secondary);
+    font-size: var(--font-size-xs);
+  }
+
+  .dashboard-heatmap-grid {
+    grid-area: grid;
+    grid-auto-flow: column;
+    grid-template-rows: repeat(7, auto);
+  }
+
+  .dashboard-heat-cell {
+    display: block;
+    width: 100%;
+    aspect-ratio: 1;
+    border-radius: var(--radius-inner);
+  }
+
+  .dashboard-legend-cell {
+    width: var(--spacing-3);
+    flex: none;
+  }
+
+  .dashboard-heat-cell.level-none {
+    visibility: hidden;
+  }
+
+  .dashboard-heat-cell.level-0 {
+    background: var(--color-background-muted);
+  }
+
+  .dashboard-heat-cell.level-1 {
+    background: color-mix(in srgb, var(--color-accent) 20%, var(--color-background-muted));
+  }
+
+  .dashboard-heat-cell.level-2 {
+    background: color-mix(in srgb, var(--color-accent) 40%, var(--color-background-muted));
+  }
+
+  .dashboard-heat-cell.level-3 {
+    background: color-mix(in srgb, var(--color-accent) 65%, var(--color-background-muted));
+  }
+
+  .dashboard-heat-cell.level-4 {
+    background: var(--color-accent);
+  }
+}

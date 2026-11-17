@@ -13,3 +13,5 @@
 !server/web/vite.config.js
 !server/web/src/
 !server/web/src/**
+!server/web/public/
+!server/web/public/**

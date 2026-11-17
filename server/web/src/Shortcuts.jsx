@@ -1,5 +1,8 @@
-import { useEffect, useId, useRef } from 'react';
-import { Modal } from './Overlay.jsx';
+import { Fragment, useEffect, useId, useRef } from 'react';
+import { Dialog, DialogHeader } from '@astryxdesign/core/Dialog';
+import { Kbd } from '@astryxdesign/core/Kbd';
+import { HStack, VStack } from '@astryxdesign/core/Stack';
+import { Heading, Text } from '@astryxdesign/core/Text';
 import { resolveKey, SHORTCUT_GROUPS } from './shortcuts.js';
 
 const typingIn = (el) => ['INPUT', 'TEXTAREA', 'SELECT'].includes(el?.tagName) || Boolean(el?.isContentEditable);
@@ -31,47 +34,47 @@ export function useShortcuts(handlers) {
   }, []);
 }
 
+const keyName = (key) => ({ '⌘': 'meta', Ctrl: 'ctrl', Esc: 'escape' })[key] ?? key;
+
 function Keys({ keys }) {
   return (
-    <span className="keys">
+    <HStack gap={1} align="center">
       {keys.map((key, i) => (
-        <span key={i}>
-          {i > 0 && keys[0] === 'g' && <span className="then"> then </span>}
-          <kbd>{key}</kbd>
-        </span>
+        <Fragment key={i}>
+          {i > 0 && keys[0] === 'g' && <Text type="supporting">then</Text>}
+          <Kbd keys={keyName(key)} />
+        </Fragment>
       ))}
-    </span>
+    </HStack>
   );
 }
 
 export function ShortcutsHelp({ modifier, onClose }) {
   const ids = useId();
+  const onOpenChange = (open) => !open && onClose();
   return (
-    <Modal label="Keyboard shortcuts" onClose={onClose} className="shortcuts">
-      <header className="dialog-header">
-        <h2>Keyboard shortcuts</h2>
-        <button type="button" className="ghost" data-autofocus onClick={onClose}>
-          Close
-        </button>
-      </header>
-      <div className="shortcut-groups">
+    <Dialog isOpen onOpenChange={onOpenChange} width={640} padding={4}>
+      <DialogHeader title="Keyboard shortcuts" onOpenChange={onOpenChange} />
+      <VStack gap={6} paddingBlockStart={4}>
         {SHORTCUT_GROUPS(modifier).map((group, index) => (
-          <section key={group.title} aria-labelledby={`${ids}-${index}`}>
-            <h3 id={`${ids}-${index}`}>{group.title}</h3>
-            <dl>
+          <VStack key={group.title} as="section" gap={2} aria-labelledby={`${ids}-${index}`}>
+            <Heading level={3} id={`${ids}-${index}`}>
+              {group.title}
+            </Heading>
+            <VStack gap={2}>
               {group.items.map((item) => (
-                <div key={item.label}>
-                  <dt>
-                    <Keys keys={item.keys} />
-                  </dt>
-                  <dd>{item.label}</dd>
-                </div>
+                <HStack key={item.label} gap={4} align="center" justify="between" wrap="wrap">
+                  <Text type="body">{item.label}</Text>
+                  <Keys keys={item.keys} />
+                </HStack>
               ))}
-            </dl>
-          </section>
+            </VStack>
+          </VStack>
         ))}
-      </div>
-      <p className="muted small dialog-note">Shortcuts pause while you type in a field.</p>
-    </Modal>
+        <Text type="supporting" color="secondary">
+          Shortcuts pause while you type in a field.
+        </Text>
+      </VStack>
+    </Dialog>
   );
 }
