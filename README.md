@@ -84,7 +84,7 @@ A database leak is a full compromise. To end every session, grant and API token 
 
 ## Web UI
 
-Open the server URL and sign in. **Answer** shows passages from memory with their sources; **Pages** searches for whole pages by keyword. Open a source in the side panel to keep your place in the results, or open it as a full page to read and link to a section. The dashboard, graph, timeline, journal, and activity views each have their own link.
+Open the server URL and sign in. **Answer** shows passages with their sources; **Pages** finds whole pages by keyword. Open a source in the side panel to keep your place, or open its full page to read and link to a section. The contents, backlinks, links, and recent changes appear to the left of the article on wide screens and below it on phones. A label such as `[ver 2]` identifies a page revision.
 
 Pensieve uses one layout based on the [Linux manual pages](https://man7.org/linux/man-pages/): plain navigation links, green headings, and monospace passages. It follows the device’s light or dark mode. In **Settings**, choose the default search mode and whether to rerank page results, manage API tokens and connected apps when Google sign-in is enabled, or sign out. Graph controls are on the graph itself.
 

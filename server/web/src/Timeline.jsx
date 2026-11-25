@@ -1,5 +1,4 @@
 import { useCallback, useContext, useEffect, useRef, useState } from 'react';
-import { Badge } from '@astryxdesign/core/Badge';
 import { Button } from '@astryxdesign/core/Button';
 import { Grid } from '@astryxdesign/core/Grid';
 import { Icon } from '@astryxdesign/core/Icon';
@@ -11,6 +10,7 @@ import { Heading, Text } from '@astryxdesign/core/Text';
 import { Timestamp } from '@astryxdesign/core/Timestamp';
 import { History, ScrollText } from 'lucide-react';
 import { api, query, Unauthorized } from './api.js';
+import { PageVersion } from './PageVersion.jsx';
 import { href } from './router.js';
 import { AuthContext, Empty, ErrorNote, formatNumber, Loading, PageLink, RelTime } from './ui.jsx';
 
@@ -88,7 +88,7 @@ export function Timeline({ params }) {
                   label={
                     <HStack gap={2} align="center" wrap="wrap">
                       <PageLink title={r.title} />
-                      <Badge variant="neutral" label={r.rev === 1 ? 'created' : `rev ${r.rev}`} />
+                      <PageVersion rev={r.rev} />
                     </HStack>
                   }
                   description={<Text as="p" color={r.summary ? 'primary' : 'secondary'}>{r.summary ?? 'No summary'}</Text>}

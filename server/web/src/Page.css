@@ -1,16 +1,8 @@
 @layer app {
-  .reading-progress {
-    position: sticky;
-    inset-block-start: 0;
-    z-index: 1;
-    background: var(--color-background-body);
-    max-inline-size: 44rem;
-  }
-
   .page-view {
     display: grid;
-    grid-template-columns: minmax(0, 44rem) minmax(0, 16rem);
-    gap: var(--spacing-8);
+    grid-template-columns: minmax(0, 44rem);
+    gap: var(--spacing-4);
     align-items: start;
     overflow-wrap: anywhere;
   }
@@ -49,10 +41,8 @@
   }
 
   .page-sidebar {
-    position: sticky;
-    inset-block-start: 0;
-    border-inline-start: var(--border-width) solid var(--color-border);
-    padding-inline-start: var(--spacing-4);
+    border-block-start: var(--border-width) solid var(--color-border);
+    padding-block-start: var(--spacing-3);
   }
 
   .page-sidebar h2,
@@ -100,18 +90,31 @@
     margin-block-start: var(--spacing-2);
   }
 
-  @media (max-width: 54rem) {
-    .page-view {
-      grid-template-columns: minmax(0, 44rem);
-      gap: var(--spacing-4);
+  @media (width > 54rem) {
+    .manual-shell > main:has(> .page-view > .page-sidebar) {
+      container-type: size;
+    }
+
+    .page-view:has(> .page-sidebar) {
+      grid-template-columns: minmax(0, 16rem) minmax(0, 44rem);
+      grid-template-areas: "details content";
+      column-gap: var(--spacing-8);
+    }
+
+    .page-view:has(> .page-sidebar) > .page-main {
+      grid-area: content;
     }
 
     .page-sidebar {
-      position: static;
-      border-inline-start: 0;
-      border-block-start: var(--border-width) solid var(--color-border);
-      padding-inline-start: 0;
-      padding-block-start: var(--spacing-3);
+      grid-area: details;
+      position: sticky;
+      inset-block-start: 0;
+      max-block-size: 100cqb;
+      overflow: auto;
+      border-block-start: 0;
+      border-inline-end: var(--border-width) solid var(--color-border);
+      padding-block-start: 0;
+      padding-inline-end: var(--spacing-4);
     }
   }
 }
