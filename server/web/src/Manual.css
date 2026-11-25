@@ -1,0 +1,77 @@
+@layer app {
+  @scope ([data-astryx-theme="pensieve-manual"]) to ([data-astryx-theme]) {
+    h1.astryx-heading {
+      color: var(--color-accent);
+      font-size: clamp(2rem, 4vw, 2.45rem);
+    }
+
+    .astryx-link[data-color="accent"] {
+      color: var(--color-text-link);
+      text-decoration: underline;
+      text-decoration-thickness: 1px;
+      text-underline-offset: 0.16em;
+    }
+
+    .astryx-link[data-color="accent"] > .astryx-text {
+      text-decoration: inherit;
+      text-underline-offset: inherit;
+    }
+
+    .manual-top-nav {
+      border-block-start: 3px solid var(--color-accent);
+    }
+
+    .manual-wordmark span {
+      color: var(--color-text-primary);
+      font: 600 1.25rem/1.25 var(--font-family-manual-serif);
+    }
+
+    .manual-rail {
+      inline-size: 11rem;
+      padding-block-start: var(--spacing-3);
+    }
+
+    .manual-nav-section span[id] {
+      color: var(--color-text-secondary);
+      font: 600 0.8rem/1.45 var(--font-family-code);
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+    }
+
+    .manual-nav-row {
+      border-inline-start: 2px solid transparent;
+      border-radius: 0;
+    }
+
+    .manual-nav-row[aria-current="page"] {
+      border-inline-start-color: var(--color-accent);
+      background-color: var(--color-background-muted);
+      color: var(--color-text-primary);
+      font-weight: 650;
+    }
+
+    .manual-shortcut {
+      color: var(--color-text-secondary);
+      font: 0.8rem/1.25 var(--font-family-code);
+      white-space: nowrap;
+    }
+
+    .manual-palette {
+      border: 1px solid var(--color-border-emphasized);
+    }
+
+    .manual-top-nav[data-mode="mobile-bar"] :is(.manual-palette, .manual-phone-control, .manual-nav-toggle) {
+      min-inline-size: 44px;
+      min-block-size: 44px;
+    }
+
+    .manual-top-nav[data-mode="mobile-bar"] .manual-palette {
+      border-color: transparent;
+      background-color: transparent;
+    }
+
+    .astryx-mobile-nav :is(.manual-shortcut, .manual-nav-toggle) {
+      display: none;
+    }
+  }
+}

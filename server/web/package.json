@@ -6,7 +6,7 @@
   "scripts": {
     "test": "node --test",
     "build": "vite build",
-    "themes": "for a in silver moonlight lavender ember; do astryx theme build themes/accents/$a.theme.ts -o src/themes/accents/; done && astryx theme build themes/pensieve/pensieve.theme.ts -o src/themes/pensieve/"
+    "themes": "for a in silver moonlight lavender ember manual; do astryx theme build themes/accents/$a.theme.ts -o src/themes/accents/; done && astryx theme build themes/pensieve/pensieve.theme.ts -o src/themes/pensieve/"
   },
   "dependencies": {
     "@astryxdesign/core": "0.7.16",

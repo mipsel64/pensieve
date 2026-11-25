@@ -9,7 +9,6 @@ import { TextInput } from '@astryxdesign/core/TextInput';
 import { Heading, Text } from '@astryxdesign/core/Text';
 import { Eye, EyeOff } from 'lucide-react';
 import { login, Unauthorized } from './api.js';
-import { Logo } from './ui.jsx';
 
 export function Login({ methods, onSuccess }) {
   const [token, setToken] = useState('');
@@ -35,7 +34,6 @@ export function Login({ methods, onSuccess }) {
     <Center axis="both" padding={6} minHeight="100dvh">
       <VStack gap={4} hAlign="center" width="100%" maxWidth={400}>
         <VStack gap={2} hAlign="center">
-          <Logo size={40} />
           <Heading level={1}>Pensieve</Heading>
           <Text type="body" color="secondary">
             Shared memory for your agents

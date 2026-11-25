@@ -1,11 +1,12 @@
 import './layers.css';
 import '@astryxdesign/core/reset.css';
 import '@astryxdesign/core/astryx.css';
+import './Manual.css';
 import '@fontsource-variable/ibm-plex-sans/wght.css';
 import '@fontsource-variable/jetbrains-mono/wght.css';
 import { Fragment, lazy, StrictMode, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { AppShell } from '@astryxdesign/core/AppShell';
+import { AppShell, useAppShellMobile } from '@astryxdesign/core/AppShell';
 import { Button } from '@astryxdesign/core/Button';
 import {
   DropdownMenu,
@@ -18,6 +19,7 @@ import {
 import { Icon } from '@astryxdesign/core/Icon';
 import { IconButton } from '@astryxdesign/core/IconButton';
 import { Kbd } from '@astryxdesign/core/Kbd';
+import { MobileNavToggle } from '@astryxdesign/core/MobileNav';
 import { SideNav, SideNavItem, SideNavSection } from '@astryxdesign/core/SideNav';
 import { HStack, VStack } from '@astryxdesign/core/Stack';
 import { Theme } from '@astryxdesign/core/theme';
@@ -27,7 +29,7 @@ import { ACCENT_THEMES } from './accents.js';
 import { initTheme, nextPreference, useTheme } from './theme.js';
 import { api, authMethods, logout, Unauthorized } from './api.js';
 import { href, RouteContext, useHashRoute } from './router.js';
-import { AuthContext, Empty, ErrorNote, Loading, Logo } from './ui.jsx';
+import { AuthContext, Empty, ErrorNote, Loading } from './ui.jsx';
 import { Login } from './Login.jsx';
 import { Dashboard } from './Dashboard.jsx';
 import { Timeline } from './Timeline.jsx';
@@ -49,7 +51,11 @@ const GraphView = lazy(() => import('./Graph.jsx').then((m) => ({ default: m.Gra
 
 /** The Astryx theme for an accent, in the stored appearance (System, Light or Dark). */
 function AppTheme({ accent = 'claude', children }) {
-  const { preference } = useTheme();
+  const { preference, resolved } = useTheme();
+  useLayoutEffect(() => {
+    // Astryx applies the selected theme to <html> before this effect runs.
+    document.querySelector('meta[name="theme-color"]').content = getComputedStyle(document.documentElement).backgroundColor;
+  }, [accent, resolved]);
   return (
     <Theme theme={ACCENT_THEMES[accent] ?? ACCENT_THEMES.claude} mode={preference}>
       {children}
@@ -116,11 +122,30 @@ function App() {
   );
 }
 
+function PaletteButton({ manual, modifier, onClick }) {
+  const { isMobile } = useAppShellMobile();
+  return (
+    <Button
+      className={manual ? 'manual-palette' : undefined}
+      label="Search"
+      size="sm"
+      isIconOnly={manual && isMobile}
+      icon={<Icon icon={SearchIcon} />}
+      endContent={manual && !isMobile ? (
+        <span className="manual-shortcut" aria-hidden="true">{modifier} K</span>
+      ) : undefined}
+      tooltip={`Command palette (${modifier} K)`}
+      onClick={onClick}
+    />
+  );
+}
+
 function Shell({ methods, onSignOut }) {
   const route = useHashRoute();
   const { view, params } = route;
   const [overlay, setOverlay] = useState(null);
-  const { flush } = useSettings();
+  const { flush, settings } = useSettings();
+  const manual = settings.accent === 'manual';
   const { preference, setPreference } = useTheme();
   const toast = useToast();
   const modifier = useMemo(() => modifierLabel(navigator.platform), []);
@@ -201,23 +226,32 @@ function Shell({ methods, onSignOut }) {
     ),
   }[view];
 
+  const wordmark = <TopNavHeading className={manual ? 'manual-wordmark' : undefined} heading="Pensieve" headingHref={href('search')} />;
   const topNav = (
     <TopNav
       label="Pensieve"
-      heading={<TopNavHeading heading="Pensieve" headingHref={href('search')} logo={<Logo size={22} />} />}
+      className={manual ? 'manual-top-nav' : undefined}
+      heading={manual ? (
+        <HStack gap={1} align="center">
+          <MobileNavToggle className="manual-nav-toggle" />
+          {wordmark}
+        </HStack>
+      ) : wordmark}
       endContent={
         <HStack gap={1} align="center">
-          <Button
-            label="Search"
-            size="sm"
-            icon={<Icon icon={SearchIcon} />}
-            tooltip={`Command palette (${modifier} K)`}
-            onClick={() => setOverlay('palette')}
-          />
+          <PaletteButton manual={manual} modifier={modifier} onClick={() => setOverlay('palette')} />
           <DropdownMenu
             hasChevron={false}
             alignment="end"
-            renderTrigger={(props) => <IconButton {...props} label="More options" variant="ghost" icon={<Icon icon={MoreHorizontal} />} />}
+            renderTrigger={(props) => (
+              <IconButton
+                {...props}
+                className={manual ? 'manual-phone-control' : props.className}
+                label="More options"
+                variant="ghost"
+                icon={<Icon icon={MoreHorizontal} />}
+              />
+            )}
           >
             <DropdownMenuGroup title="Appearance">
               <DropdownMenuRadioGroup label="Appearance" value={preference} onChange={setPreference}>
@@ -245,10 +279,29 @@ function Shell({ methods, onSignOut }) {
   );
 
   const sideNav = (
-    <SideNav footer={<SideNavItem label="Settings" icon={SettingsIcon} href={href('settings')} isSelected={view === 'settings'} />}>
-      <SideNavSection title="Views" isHeaderHidden>
-        {NAV.map(([id, label, NavIcon]) => (
-          <SideNavItem key={id} label={label} icon={NavIcon} href={href(id)} isSelected={view === id} />
+    <SideNav
+      className={manual ? 'manual-rail' : undefined}
+      footer={
+        <SideNavItem
+          label="Settings"
+          icon={manual ? undefined : SettingsIcon}
+          href={href('settings')}
+          isSelected={view === 'settings'}
+          className={manual ? 'manual-nav-row' : undefined}
+        />
+      }
+    >
+      <SideNavSection className={manual ? 'manual-nav-section' : undefined} title="Views" isHeaderHidden={!manual}>
+        {NAV.map(([id, label, NavIcon, key]) => (
+          <SideNavItem
+            key={id}
+            className={manual ? 'manual-nav-row' : undefined}
+            label={label}
+            icon={manual ? undefined : NavIcon}
+            href={href(id)}
+            isSelected={view === id}
+            endContent={manual ? <span className="manual-shortcut" aria-hidden="true">g {key}</span> : undefined}
+          />
         ))}
       </SideNavSection>
     </SideNav>
@@ -256,7 +309,13 @@ function Shell({ methods, onSignOut }) {
 
   return (
     <RouteContext.Provider value={route}>
-      <AppShell topNav={topNav} sideNav={sideNav} contentPadding={view === 'graph' ? 0 : 6} variant="wash">
+      <AppShell
+        topNav={topNav}
+        sideNav={sideNav}
+        mobileNav={manual ? { hasToggle: false } : undefined}
+        contentPadding={view === 'graph' ? 0 : 6}
+        variant={manual ? 'section' : 'wash'}
+      >
         <Fragment key={view}>
           <Suspense fallback={<Loading variant="page" />}>{content}</Suspense>
         </Fragment>

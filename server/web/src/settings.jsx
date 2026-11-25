@@ -12,6 +12,7 @@ export const ACCENTS = {
   moonlight: { label: 'Moonlight' },
   lavender: { label: 'Lavender' },
   ember: { label: 'Ember' },
+  manual: { label: 'Manual' },
 };
 
 export const DEFAULT_SETTINGS = {

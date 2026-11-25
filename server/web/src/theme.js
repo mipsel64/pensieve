@@ -2,8 +2,6 @@ import { useSyncExternalStore } from 'react';
 
 export const THEME_KEY = 'pensieve.theme';
 export const THEME_CHOICES = ['system', 'light', 'dark'];
-// Match --color-background-body in themes/pensieve; the browser chrome (address bar) takes this color.
-export const THEME_COLORS = { light: '#f5f4ed', dark: '#111111' };
 
 export function normalizePreference(value) {
   return THEME_CHOICES.includes(value) ? value : 'system';
@@ -36,11 +34,6 @@ export function writePreference(storage, preference) {
   }
 }
 
-/** Paints the browser chrome with the resolved theme. Astryx's <Theme> owns `data-theme` once React runs. */
-export function applyThemeColor(meta, resolved) {
-  if (meta) meta.setAttribute('content', THEME_COLORS[resolved]);
-}
-
 const listeners = new Set();
 let preference = 'system';
 let resolved = 'light';
@@ -57,7 +50,6 @@ const darkQuery = () => matchMedia('(prefers-color-scheme: dark)');
 
 function sync() {
   resolved = resolveTheme(preference, darkQuery().matches);
-  applyThemeColor(document.querySelector('meta[name="theme-color"]'), resolved);
   for (const listener of listeners) listener();
 }
 
