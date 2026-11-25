@@ -1,0 +1,6 @@
+@layer app {
+  .page-version {
+    color: var(--color-text-manual-section);
+    white-space: nowrap;
+  }
+}

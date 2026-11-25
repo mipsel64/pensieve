@@ -11,9 +11,10 @@ import { Copy, History, Link2, Maximize2, Network } from 'lucide-react';
 import { query } from './api.js';
 import { href, RouteContext } from './router.js';
 import { isDailyJournal } from './journal.js';
-import { PageOutline, ReadingProgress, scrollToHeading, useScrollContainer } from './Toc.jsx';
+import { PageOutline, scrollToHeading, useScrollContainer } from './Toc.jsx';
 import { useCopy } from './Toast.jsx';
 import { readingMinutes } from './toc.js';
+import { PageVersion } from './PageVersion.jsx';
 import { ErrorNote, Markdown, PageLink, RelTime, splitFrontmatter, useResource } from './ui.jsx';
 import './Page.css';
 
@@ -124,38 +125,35 @@ export function PageView({ title }) {
   }, [p.data, params.section]);
 
   return (
-    <>
-      <ReadingProgress scrollContainerRef={scrollContainer} content={p.body} />
-      <article className="page-view" aria-labelledby="page-title">
-        <VStack gap={4}>
-          <header className="page-header">
-            <HStack justify="between" align="start" gap={2}>
-              <h1 id="page-title" tabIndex={-1} ref={heading}>{name}</h1>
-              {p.data && <PageMenu title={p.data.title} />}
-            </HStack>
-            {p.data && <PageMeta data={p.data} minutes={p.minutes} />}
-          </header>
-          <PageStatus page={p.page} title={title} />
-          {p.data && (
-            <>
-              <Properties fields={p.fields} missing={p.missing} />
-              <VStack ref={prose} className="page-prose" gap={0}>
-                <Markdown missing={p.missing} newestFirst={newestFirst} onAnchor={copySection}>
-                  {p.body}
-                </Markdown>
-              </VStack>
-            </>
-          )}
-        </VStack>
+    <article className="page-view" aria-labelledby="page-title">
+      <VStack className="page-main" gap={4}>
+        <header className="page-header">
+          <HStack justify="between" align="start" gap={2}>
+            <h1 id="page-title" tabIndex={-1} ref={heading}>{name}</h1>
+            {p.data && <PageMenu title={p.data.title} />}
+          </HStack>
+          {p.data && <PageMeta data={p.data} minutes={p.minutes} />}
+        </header>
+        <PageStatus page={p.page} title={title} />
         {p.data && (
-          <VStack as="aside" className="page-sidebar" gap={4} aria-label="Page details">
-            <PageOutline body={p.body} newestFirst={newestFirst} scrollContainerRef={scrollContainer} onNavigate={showSection} />
-            <LinkLists data={p.data} />
-            <RecentChanges changes={p.changes} />
-          </VStack>
+          <>
+            <Properties fields={p.fields} missing={p.missing} />
+            <VStack ref={prose} className="page-prose" gap={0}>
+              <Markdown missing={p.missing} newestFirst={newestFirst} onAnchor={copySection}>
+                {p.body}
+              </Markdown>
+            </VStack>
+          </>
         )}
-      </article>
-    </>
+      </VStack>
+      {p.data && (
+        <VStack as="aside" className="page-sidebar" gap={4} aria-label="Page details" tabIndex={0}>
+          <PageOutline body={p.body} newestFirst={newestFirst} scrollContainerRef={scrollContainer} params={params} onNavigate={showSection} />
+          <LinkLists data={p.data} />
+          <RecentChanges changes={p.changes} />
+        </VStack>
+      )}
+    </article>
   );
 }
 
@@ -164,7 +162,7 @@ function PageMeta({ data, minutes }) {
     <Text className="page-meta" type="supporting" color="secondary">
       {data.kind ?? 'untyped'} ·{' '}
       {data.confidence && <>confidence {data.confidence} · </>}
-      rev {data.rev} · updated <RelTime iso={data.updated_at} /> by <Text type="code" color="inherit">{data.updated_by}</Text> · {minutes} min read · visited{' '}
+      <PageVersion rev={data.rev} /> · updated <RelTime iso={data.updated_at} /> by <Text type="code" color="inherit">{data.updated_by}</Text> · {minutes} min read · visited{' '}
       <RelTime iso={data.visited_at} />
     </Text>
   );
@@ -245,7 +243,7 @@ function RecentChanges({ changes, heading: Heading = 'h2' }) {
           <li key={change.seq}>
             <p>{change.summary ?? 'No summary'}</p>
             <p className="page-note">
-              rev {change.rev} · {change.by} · <RelTime iso={change.at} />
+              <PageVersion rev={change.rev} /> · {change.by} · <RelTime iso={change.at} />
             </p>
           </li>
         ))}

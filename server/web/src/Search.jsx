@@ -5,6 +5,7 @@ import { useCopy } from './Toast.jsx';
 import { AuthContext, ErrorNote, formatNumber, Markdown, PageLink, RelTime } from './ui.jsx';
 import { useSettings } from './settings.jsx';
 import { withoutTitle } from './Page.jsx';
+import { PageVersion } from './PageVersion.jsx';
 import './Search.css';
 
 // The server drops everything but letters and digits, so `???` would otherwise list recent pages as matches.
@@ -226,7 +227,7 @@ function Hits({ data, took, q, params }) {
               <li key={hit.title}>
                 <h3><PageLink title={hit.title} /></h3>
                 <p className="search-note">
-                  {hit.kind ?? 'untyped'} · rev {hit.rev} · updated <RelTime iso={hit.updated_at} />
+                  {hit.kind ?? 'untyped'} · <PageVersion rev={hit.rev} /> · updated <RelTime iso={hit.updated_at} />
                   {data.reranked && <> · relevance {hit.score.toFixed(2)}</>}
                 </p>
                 <p>
