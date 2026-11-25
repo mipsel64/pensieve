@@ -1,24 +1,20 @@
-import { useCallback, useContext, useEffect, useId, useMemo, useRef, useState } from 'react';
-import { Breadcrumbs, BreadcrumbItem } from '@astryxdesign/core/Breadcrumbs';
-import { Badge } from '@astryxdesign/core/Badge';
+import { useCallback, useContext, useEffect, useId, useMemo, useRef } from 'react';
 import { Drawer, DrawerHeader } from '@astryxdesign/core/Drawer';
-import { Grid } from '@astryxdesign/core/Grid';
 import { Icon } from '@astryxdesign/core/Icon';
 import { IconButton } from '@astryxdesign/core/IconButton';
 import { Layout, LayoutContent } from '@astryxdesign/core/Layout';
-import { List, ListItem } from '@astryxdesign/core/List';
 import { MetadataList, MetadataListItem } from '@astryxdesign/core/MetadataList';
 import { MoreMenu } from '@astryxdesign/core/MoreMenu';
 import { HStack, VStack } from '@astryxdesign/core/Stack';
-import { Heading, Text } from '@astryxdesign/core/Text';
-import { Copy, FileQuestion, History, Link2, Maximize2, Network } from 'lucide-react';
+import { Text } from '@astryxdesign/core/Text';
+import { Copy, History, Link2, Maximize2, Network } from 'lucide-react';
 import { query } from './api.js';
 import { href, RouteContext } from './router.js';
 import { isDailyJournal } from './journal.js';
 import { PageOutline, ReadingProgress, scrollToHeading, useScrollContainer } from './Toc.jsx';
 import { useCopy } from './Toast.jsx';
 import { readingMinutes } from './toc.js';
-import { Empty, ErrorNote, Loading, Markdown, PageLink, RelTime, splitFrontmatter, TypeBadge, useResource } from './ui.jsx';
+import { ErrorNote, Markdown, PageLink, RelTime, splitFrontmatter, useResource } from './ui.jsx';
 import './Page.css';
 
 function usePage(title) {
@@ -44,22 +40,8 @@ export function withoutTitle(body, title) {
   return heading && heading[1].trim().toLowerCase() === title.toLowerCase() ? body.slice(heading[0].length) : body;
 }
 
-const WIDTH_KEY = 'pensieve.drawerWidth';
-const MIN_WIDTH = 320;
-const DEFAULT_WIDTH = 640;
-
-function storedDrawerWidth() {
-  try {
-    const saved = Number(localStorage.getItem(WIDTH_KEY));
-    return Number.isFinite(saved) && saved >= MIN_WIDTH ? saved : DEFAULT_WIDTH;
-  } catch {
-    return DEFAULT_WIDTH;
-  }
-}
-
 export function PageDrawer({ title, closeHref }) {
   const p = usePage(title);
-  const [width] = useState(storedDrawerWidth);
   const name = p.data?.title ?? title;
   const onOpenChange = useCallback(
     (open) => {
@@ -69,7 +51,7 @@ export function PageDrawer({ title, closeHref }) {
   );
 
   return (
-    <Drawer isOpen hasScrim={false} side="end" width={width} label={name} onOpenChange={onOpenChange}>
+    <Drawer isOpen hasScrim={false} side="end" width="40rem" label={name} onOpenChange={onOpenChange}>
       <Layout
         header={
           <DrawerHeader
@@ -97,7 +79,7 @@ export function PageDrawer({ title, closeHref }) {
         }
         content={
           <LayoutContent className="page-drawer-content">
-            <VStack gap={6}>
+            <VStack gap={4}>
               <PageStatus page={p.page} title={title} />
               {p.data && (
                 <>
@@ -107,8 +89,8 @@ export function PageDrawer({ title, closeHref }) {
                       {p.body}
                     </Markdown>
                   </VStack>
-                  <LinkLists data={p.data} />
-                  <RecentChanges changes={p.changes} />
+                  <LinkLists data={p.data} heading="h3" />
+                  <RecentChanges changes={p.changes} heading="h3" />
                 </>
               )}
             </VStack>
@@ -144,66 +126,43 @@ export function PageView({ title }) {
   return (
     <>
       <ReadingProgress scrollContainerRef={scrollContainer} content={p.body} />
-      <VStack as="article" className="page-view" gap={0} aria-labelledby="page-title">
-        <Layout
-          height="auto"
-          padding={0}
-          contentWidth="47.5rem"
-          content={
-            <LayoutContent isScrollable={false} padding={0}>
-              <VStack gap={6}>
-                <VStack as="header" className="page-header" gap={3}>
-                  <HStack justify="between" align="center" wrap="wrap" gap={2}>
-                    <Breadcrumbs variant="supporting">
-                      <BreadcrumbItem href={href('search')}>Memory</BreadcrumbItem>
-                      {p.data && (
-                        <BreadcrumbItem isCurrent>
-                          <TypeBadge kind={p.data.kind} />
-                        </BreadcrumbItem>
-                      )}
-                    </Breadcrumbs>
-                    {p.data && <PageMenu title={p.data.title} />}
-                  </HStack>
-                  <Heading level={1} id="page-title" tabIndex={-1} ref={heading} textWrap="balance">
-                    {name}
-                  </Heading>
-                  {p.data && <PageMeta data={p.data} minutes={p.minutes} badge={false} />}
-                </VStack>
-                <PageStatus page={p.page} title={title} />
-                {p.data && (
-                  <>
-                    <Properties fields={p.fields} missing={p.missing} />
-                    <VStack ref={prose} className="page-prose" gap={0}>
-                      <Markdown missing={p.missing} newestFirst={newestFirst} onAnchor={copySection}>
-                        {p.body}
-                      </Markdown>
-                    </VStack>
-                  </>
-                )}
+      <article className="page-view" aria-labelledby="page-title">
+        <VStack gap={4}>
+          <header className="page-header">
+            <HStack justify="between" align="start" gap={2}>
+              <h1 id="page-title" tabIndex={-1} ref={heading}>{name}</h1>
+              {p.data && <PageMenu title={p.data.title} />}
+            </HStack>
+            {p.data && <PageMeta data={p.data} minutes={p.minutes} />}
+          </header>
+          <PageStatus page={p.page} title={title} />
+          {p.data && (
+            <>
+              <Properties fields={p.fields} missing={p.missing} />
+              <VStack ref={prose} className="page-prose" gap={0}>
+                <Markdown missing={p.missing} newestFirst={newestFirst} onAnchor={copySection}>
+                  {p.body}
+                </Markdown>
               </VStack>
-            </LayoutContent>
-          }
-        />
+            </>
+          )}
+        </VStack>
         {p.data && (
-          <VStack as="aside" className="page-sidebar" gap={6} aria-label="Page details">
+          <VStack as="aside" className="page-sidebar" gap={4} aria-label="Page details">
             <PageOutline body={p.body} newestFirst={newestFirst} scrollContainerRef={scrollContainer} onNavigate={showSection} />
-            <LinkLists data={p.data} as={2} />
-            <RecentChanges changes={p.changes} as={2} />
+            <LinkLists data={p.data} />
+            <RecentChanges changes={p.changes} />
           </VStack>
         )}
-      </VStack>
+      </article>
     </>
   );
 }
 
-function PageMeta({ data, minutes, badge = true }) {
+function PageMeta({ data, minutes }) {
   return (
     <Text className="page-meta" type="supporting" color="secondary">
-      {badge && (
-        <>
-          <TypeBadge kind={data.kind} />{' '}
-        </>
-      )}
+      {data.kind ?? 'untyped'} ·{' '}
       {data.confidence && <>confidence {data.confidence} · </>}
       rev {data.rev} · updated <RelTime iso={data.updated_at} /> by <Text type="code" color="inherit">{data.updated_by}</Text> · {minutes} min read · visited{' '}
       <RelTime iso={data.visited_at} />
@@ -212,13 +171,14 @@ function PageMeta({ data, minutes, badge = true }) {
 }
 
 function PageStatus({ page, title }) {
-  if (page.loading) return <Loading variant="article" label="Loading page" />;
+  if (page.loading) return <p role="status">Loading page…</p>;
   if (!page.error) return null;
   if (/cannot find page/i.test(page.error.message)) {
     return (
-      <Empty icon={FileQuestion} title={`No page called “${title}” yet`} action={{ href: href('search', { q: title, mode: 'keywords' }), label: 'Search for it' }}>
-        Pages link to it, but nobody has written it.
-      </Empty>
+      <p>
+        No page called “{title}”.{' '}
+        <a href={href('search', { q: title, mode: 'keywords' })}>Search for it</a>.
+      </p>
     );
   }
   return <ErrorNote error={page.error} onRetry={page.reload} />;
@@ -238,7 +198,7 @@ function PageMenu({ title }) {
 function Properties({ fields, missing }) {
   if (!fields.length) return null;
   return (
-    <MetadataList className="page-properties" columns="multi" label={{ position: 'top' }}>
+    <MetadataList className="page-properties" label={{ position: 'top' }}>
       {fields.map(([key, value]) => (
         <MetadataListItem key={key} label={key}>
           <Markdown missing={missing}>{value}</Markdown>
@@ -248,59 +208,48 @@ function Properties({ fields, missing }) {
   );
 }
 
-function LinkLists({ data, as = 3 }) {
+function LinkLists({ data, heading: Heading = 'h2' }) {
   const ids = useId();
   const lists = [
     ['Backlinks', data.backlinks.map((title) => ({ title, missing: false })), 'No other page links here yet.'],
     ['Links', data.links.map((link) => ({ title: link.title, missing: !link.exists })), 'This page links to nothing.'],
   ];
   return (
-    <Grid className="page-references" columns={{ minWidth: 240, max: 2 }} gap={4}>
+    <>
       {lists.map(([label, items, none]) => (
-        <VStack key={label} as="section" gap={2} aria-labelledby={`${ids}-${label}`}>
-          <HStack gap={2} align="center">
-            <Heading level={as} id={`${ids}-${label}`}>
-              {label}
-            </Heading>
-            <Badge label={items.length} />
-          </HStack>
+        <section className="page-links" key={label} aria-labelledby={`${ids}-${label}`}>
+          <Heading id={`${ids}-${label}`}>{label}</Heading>
           {items.length ? (
-            <List density="compact" edge="flush">
+            <ul className="page-references">
               {items.map((item) => (
-                <ListItem key={item.title} label={<PageLink title={item.title} missing={item.missing} />} />
+                <li key={item.title}><PageLink title={item.title} missing={item.missing} /></li>
               ))}
-            </List>
+            </ul>
           ) : (
-            <Text type="supporting" color="secondary">
-              {none}
-            </Text>
+            <p className="page-note">{none}</p>
           )}
-        </VStack>
+        </section>
       ))}
-    </Grid>
+    </>
   );
 }
 
-function RecentChanges({ changes, as = 3 }) {
+function RecentChanges({ changes, heading: Heading = 'h2' }) {
   if (changes.error) return <ErrorNote error={changes.error} onRetry={changes.reload} />;
   if (!changes.data?.length) return null;
   return (
-    <VStack as="section" className="page-changes" gap={2}>
-      <Heading level={as}>Recent changes</Heading>
-      <List density="compact" edge="flush">
+    <section className="page-changes">
+      <Heading>Recent changes</Heading>
+      <ul>
         {changes.data.map((change) => (
-          <ListItem
-            key={change.seq}
-            align="start"
-            label={change.summary ?? <Text color="secondary">No summary</Text>}
-            description={
-              <Text className="page-meta" type="supporting" color="secondary">
-                <Text type="code" color="inherit">rev {change.rev}</Text> · {change.by} · <RelTime iso={change.at} />
-              </Text>
-            }
-          />
+          <li key={change.seq}>
+            <p>{change.summary ?? 'No summary'}</p>
+            <p className="page-note">
+              rev {change.rev} · {change.by} · <RelTime iso={change.at} />
+            </p>
+          </li>
         ))}
-      </List>
-    </VStack>
+      </ul>
+    </section>
   );
 }

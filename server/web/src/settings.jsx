@@ -5,18 +5,7 @@ import { Switch } from '@astryxdesign/core/Switch';
 import { api, Unauthorized } from './api.js';
 import { AuthContext } from './ui.jsx';
 
-// Each accent selects an Astryx theme from accents.js.
-export const ACCENTS = {
-  silver: { label: 'Silver' },
-  claude: { label: 'Claude' },
-  moonlight: { label: 'Moonlight' },
-  lavender: { label: 'Lavender' },
-  ember: { label: 'Ember' },
-  manual: { label: 'Manual' },
-};
-
 export const DEFAULT_SETTINGS = {
-  accent: 'claude',
   search: { mode: 'ask', rerank: true },
   graph: {
     missing: false,
@@ -62,7 +51,6 @@ export const SEARCH_MODES = ['ask', 'keywords'];
 // Stored settings may be old or hand-edited: keep only values the UI can use.
 function withDefaults(stored) {
   const settings = merge(stored, DEFAULT_SETTINGS);
-  if (!Object.hasOwn(ACCENTS, settings.accent)) settings.accent = DEFAULT_SETTINGS.accent;
   if (!SEARCH_MODES.includes(settings.search.mode)) settings.search.mode = DEFAULT_SETTINGS.search.mode;
   for (const [key, , min, max] of Object.values(GRAPH_SLIDERS).flat()) settings.graph[key] = Math.min(max, Math.max(min, settings.graph[key]));
   return settings;
@@ -113,7 +101,7 @@ export function SettingsProvider({ initial, children }) {
   // Sliders change many times a second; save once they settle.
   const update = useCallback(
     (section, patch) => {
-      const next = section ? { ...current.current, [section]: { ...current.current[section], ...patch } } : { ...current.current, ...patch };
+      const next = { ...current.current, [section]: { ...current.current[section], ...patch } };
       current.current = next;
       setSettings(next);
       setStatus({ state: 'saving' });
@@ -179,7 +167,7 @@ export function Slider({ id, label, min, max, step, value, onChange }) {
   );
 }
 
-/** The graph's toggles and sliders for one panel section, shared by the graph panel and the settings page. */
+/** The graph's toggles and sliders for one panel section. */
 export function GraphControls({ section, idPrefix }) {
   const { settings, update } = useSettings();
   const g = settings.graph;

@@ -1,11 +1,17 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-astryx-theme="pensieve">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light dark">
-  <meta name="theme-color" content="#f5f4ed">
-  <script src="/theme-init.js"></script>
+  <meta name="theme-color" content="#e8e8e8" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#282828" media="(prefers-color-scheme: dark)">
+  <style>
+    html { background: var(--color-background-body, #ffffff); }
+    @media (prefers-color-scheme: dark) {
+      html { background: var(--color-background-body, #181818); }
+    }
+  </style>
   <title>Pensieve</title>
 </head>
 <body>

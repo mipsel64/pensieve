@@ -1,143 +1,70 @@
 import { useState } from 'react';
-import { Banner } from '@astryxdesign/core/Banner';
-import { Button } from '@astryxdesign/core/Button';
-import { TextInput } from '@astryxdesign/core/TextInput';
-import { Grid } from '@astryxdesign/core/Grid';
-import { Icon } from '@astryxdesign/core/Icon';
-import { List, ListItem } from '@astryxdesign/core/List';
-import { RadioList, RadioListItem } from '@astryxdesign/core/RadioList';
-import { Spinner } from '@astryxdesign/core/Spinner';
-import { HStack, VStack } from '@astryxdesign/core/Stack';
-import { Heading, Text } from '@astryxdesign/core/Text';
-import { Theme } from '@astryxdesign/core/theme';
-import { Check, Copy, LogOut, RotateCcw } from 'lucide-react';
-import { ThemeSegmented } from './ThemeSwitch.jsx';
-import { ACCENT_THEMES } from './accents.js';
-import { api } from './api.js';
-import { Empty, ErrorNote, Loading, RelTime, useResource } from './ui.jsx';
+import { api, Unauthorized } from './api.js';
+import { RelTime, useResource } from './ui.jsx';
 import { useCopy } from './Toast.jsx';
-import { ACCENTS, GraphControls, resetGraph, SEARCH_MODES, Toggle, useSettings } from './settings.jsx';
+import { SEARCH_MODES, useSettings } from './settings.jsx';
+import './SettingsPage.css';
 
 const MODE_LABELS = {
-  ask: 'Answer: the passages recall would give an agent, with their sources',
-  keywords: 'Pages: whole pages ranked by their words',
+  ask: 'Answer (passages with sources)',
+  keywords: 'Pages (keyword matches)',
 };
-
-function SettingsSection({ titleId, children }) {
-  return (
-    <VStack as="section" gap={4} aria-labelledby={titleId}>
-      {children}
-    </VStack>
-  );
-}
 
 export function Settings({ oauth, onSignOut }) {
   const { settings, update, status, retry } = useSettings();
   const [signOutError, setSignOutError] = useState(null);
 
   return (
-    <VStack gap={6} maxWidth="73.75rem">
-      <VStack gap={1}>
-        <Heading level={1}>Settings</Heading>
-        <Text as="p" color="secondary">
-          Saved on the server, so every browser you sign in from uses them.
-        </Text>
-      </VStack>
-      <SaveStatus status={status} onRetry={retry} />
-
-      <SettingsSection titleId="appearance-title">
-        <Heading level={2} id="appearance-title">
-          Appearance
-        </Heading>
-        <HStack align="center" justify="between" wrap="wrap" gap={3}>
-          <Text id="theme-label">Theme</Text>
-          <ThemeSegmented labelledBy="theme-label" />
-        </HStack>
-        <Text as="p" type="supporting" color="secondary">
-          Saved in this browser only. System follows your device setting.
-        </Text>
-        <RadioList label="Accent" value={settings.accent} onChange={(accent) => update(null, { accent })} htmlName="accent">
-          {Object.entries(ACCENTS).map(([id, { label }]) => (
-            <RadioListItem
-              key={id}
-              value={id}
-              label={label}
-              startContent={
-                <Theme theme={ACCENT_THEMES[id]}>
-                  <Text color="accent" size="xl" aria-hidden="true">
-                    ●
-                  </Text>
-                </Theme>
-              }
-            />
+    <div className="settings-page">
+      <h1>Settings</h1>
+      <section aria-labelledby="search-title">
+        <h2 id="search-title">Search options</h2>
+        <fieldset>
+          <legend>Default search mode</legend>
+          {SEARCH_MODES.map((mode) => (
+            <div key={mode}>
+              <input
+                type="radio"
+                id={`search-mode-${mode}`}
+                name="search-mode"
+                value={mode}
+                checked={settings.search.mode === mode}
+                onChange={() => update('search', { mode })}
+              />{' '}
+              <label htmlFor={`search-mode-${mode}`}>{MODE_LABELS[mode]}</label>
+            </div>
           ))}
-        </RadioList>
-      </SettingsSection>
-
-      <SettingsSection titleId="search-title">
-        <Heading level={2} id="search-title">
-          Search
-        </Heading>
-        <RadioList label="When you press Enter" value={settings.search.mode} onChange={(mode) => update('search', { mode })} htmlName="search-mode">
-          {SEARCH_MODES.map((id) => (
-            <RadioListItem key={id} value={id} label={MODE_LABELS[id]} />
-          ))}
-        </RadioList>
-        <Toggle id="settings-rerank" label="Rerank page results with Jev, when the server has a key" checked={settings.search.rerank} onChange={(v) => update('search', { rerank: v })} />
-      </SettingsSection>
-
-      <SettingsSection titleId="graph-title">
-        <HStack align="center" justify="between" wrap="wrap" gap={3}>
-          <Heading level={2} id="graph-title">
-            Graph
-          </Heading>
-          <Button label="Restore defaults" variant="ghost" size="sm" icon={<Icon icon={RotateCcw} />} onClick={() => resetGraph(update)} />
-        </HStack>
-        <Grid columns={{ minWidth: 240, max: 3 }} gap={6} align="start">
-          <VStack gap={3}>
-            <Heading level={3}>Filters and groups</Heading>
-            <GraphControls section="filters" idPrefix="settings" />
-            <GraphControls section="groups" idPrefix="settings" />
-          </VStack>
-          <VStack gap={3}>
-            <Heading level={3}>Display</Heading>
-            <GraphControls section="display" idPrefix="settings" />
-          </VStack>
-          <VStack gap={3}>
-            <Heading level={3}>Forces</Heading>
-            <GraphControls section="forces" idPrefix="settings" />
-          </VStack>
-        </Grid>
-      </SettingsSection>
-
+        </fieldset>
+        <p>
+          <input
+            type="checkbox"
+            id="settings-rerank"
+            checked={settings.search.rerank}
+            onChange={(event) => update('search', { rerank: event.target.checked })}
+          />{' '}
+          <label htmlFor="settings-rerank">Rerank page results with Jev (when available)</label>
+        </p>
+        <SaveStatus status={status} onRetry={retry} />
+      </section>
       {oauth && (
         <>
-          <ConnectedApps />
           <ApiTokens />
+          <ConnectedApps />
         </>
       )}
-
-      <SettingsSection titleId="session-title">
-        <Heading level={2} id="session-title">
-          Session
-        </Heading>
-        <Text as="p" color="secondary">
-          This browser stays signed in for 30 days. Signing out here doesn't affect other browsers or agents.
-        </Text>
-        {signOutError && <InlineError title="Couldn't sign out" message={signOutError.message} />}
-        <HStack>
-          <Button
-            label="Sign out"
-            variant="secondary"
-            icon={<Icon icon={LogOut} />}
-            onClick={() => {
-              setSignOutError(null);
-              onSignOut().catch(setSignOutError);
-            }}
-          />
-        </HStack>
-      </SettingsSection>
-    </VStack>
+      {signOutError && <InlineError title="Couldn't sign out" message={signOutError.message} />}
+      <p>
+        <button
+          type="button"
+          onClick={() => {
+            setSignOutError(null);
+            onSignOut().catch(setSignOutError);
+          }}
+        >
+          Sign out
+        </button>
+      </p>
+    </div>
   );
 }
 
@@ -160,47 +87,33 @@ function ConnectedApps() {
   }
 
   return (
-    <SettingsSection titleId="connected-apps-title">
-      <Heading level={2} id="connected-apps-title">
-        Connected apps
-      </Heading>
-      <Text as="p" color="secondary">
-        Apps you approved can read and change all of Pensieve's memory.
-      </Text>
-      {loading && !data && <Loading label="Loading connected apps" />}
-      {error && <ErrorNote error={error} onRetry={reload} />}
-      {data?.length === 0 && <Empty>No connected apps.</Empty>}
+    <section aria-labelledby="connected-apps-title">
+      <h2 id="connected-apps-title">Connected apps</h2>
+      <p>Approved apps can read and change your memory.</p>
+      {loading && !data && <p role="status">Loading connected apps…</p>}
+      {error && !(error instanceof Unauthorized) && <InlineError title="Couldn't load connected apps" message={error.message} onRetry={reload} />}
+      {data?.length === 0 && <p>No connected apps.</p>}
       {data?.length > 0 && (
-        <List hasDividers edge="flush">
+        <ul>
           {data.map((grant) => (
-            <ListItem
-              key={grant.id}
-              align="start"
-              label={<Text weight="semibold">{grant.client_name}</Text>}
-              description={
-                <VStack gap={0.5}>
-                  <Text color="secondary">{grant.email}</Text>
-                  <Text type="supporting" color="secondary">
-                    Approved <RelTime iso={grant.created_at} /> · Last refreshed <RelTime iso={grant.refreshed_at} />
-                  </Text>
-                </VStack>
-              }
-              endContent={
-                <Button
-                  label={revoking === grant.id ? 'Revoking…' : 'Revoke'}
-                  variant="ghost"
-                  size="sm"
-                  isLoading={revoking === grant.id}
-                  isDisabled={revoking !== null}
-                  onClick={() => revoke(grant.id)}
-                />
-              }
-            />
+            <li key={grant.id}>
+              <strong>{grant.client_name}</strong> · {grant.email}
+              <br />
+              Approved <RelTime iso={grant.created_at} /> · Last refreshed <RelTime iso={grant.refreshed_at} />{' '}
+              <button
+                type="button"
+                disabled={revoking !== null}
+                aria-label={`${revoking === grant.id ? 'Revoking' : 'Revoke'} ${grant.client_name}`}
+                onClick={() => revoke(grant.id)}
+              >
+                {revoking === grant.id ? 'Revoking…' : 'Revoke'}
+              </button>
+            </li>
           ))}
-        </List>
+        </ul>
       )}
       {revokeError && <InlineError title="Couldn't revoke the app" message={revokeError.message} />}
-    </SettingsSection>
+    </section>
   );
 }
 
@@ -245,111 +158,89 @@ function ApiTokens() {
   }
 
   return (
-    <SettingsSection titleId="api-tokens-title">
-      <Heading level={2} id="api-tokens-title">
-        API tokens
-      </Heading>
-      <Text as="p" color="secondary">
-        Tokens act like you on /api and /mcp until revoked. Use them for scripts and plugins such as pi-pensieve.
-      </Text>
-      {loading && !data && <Loading label="Loading API tokens" />}
-      {error && <ErrorNote error={error} onRetry={reload} />}
-      {data?.length === 0 && <Empty>No API tokens.</Empty>}
+    <section aria-labelledby="api-tokens-title">
+      <h2 id="api-tokens-title">API tokens</h2>
+      <p>Sign in with Google to create a token for a script or plugin.</p>
+      {loading && !data && <p role="status">Loading API tokens…</p>}
+      {error && !(error instanceof Unauthorized) && <InlineError title="Couldn't load API tokens" message={error.message} onRetry={reload} />}
+      {data?.length === 0 && <p>No API tokens.</p>}
       {data?.length > 0 && (
-        <List hasDividers edge="flush">
+        <ul>
           {data.map((token) => (
-            <ListItem
-              key={token.id}
-              align="start"
-              label={<Text weight="semibold">{token.name}</Text>}
-              description={
-                <VStack gap={0.5}>
-                  <Text color="secondary">{token.email}</Text>
-                  <Text type="supporting" color="secondary">
-                    Created <RelTime iso={token.created_at} />
-                  </Text>
-                </VStack>
-              }
-              endContent={
-                <Button
-                  label={revoking === token.id ? 'Revoking…' : 'Revoke'}
-                  variant="ghost"
-                  size="sm"
-                  isLoading={revoking === token.id}
-                  isDisabled={revoking !== null}
-                  onClick={() => revoke(token.id)}
-                />
-              }
-            />
+            <li key={token.id}>
+              <strong>{token.name}</strong> · {token.email}
+              <br />
+              Created <RelTime iso={token.created_at} />{' '}
+              <button
+                type="button"
+                disabled={revoking !== null}
+                aria-label={`${revoking === token.id ? 'Revoking' : 'Revoke'} ${token.name}`}
+                onClick={() => revoke(token.id)}
+              >
+                {revoking === token.id ? 'Revoking…' : 'Revoke'}
+              </button>
+            </li>
           ))}
-        </List>
+        </ul>
       )}
       {revokeError && <InlineError title="Couldn't revoke the API token" message={revokeError.message} />}
-      <HStack as="form" onSubmit={create} align="end" wrap="wrap" gap={2}>
-        <TextInput
+      <form method="post" onSubmit={create}>
+        <label htmlFor="api-token-name">Token name (required)</label>
+        <br />
+        <input
+          type="text"
           id="api-token-name"
-          label="Name"
-          isRequired
+          name="name"
           required
           maxLength={100}
-          isDisabled={creating}
+          disabled={creating}
           value={name}
-          onChange={setName}
-          width="min(18rem, 100%)"
-        />
-        <Button type="submit" label={creating ? 'Creating…' : 'Create'} variant="primary" isLoading={creating} isDisabled={creating} />
-      </HStack>
+          onChange={(event) => setName(event.target.value)}
+        />{' '}
+        <button type="submit" disabled={creating}>
+          {creating ? 'Creating…' : 'Create token'}
+        </button>
+      </form>
       {createError && <InlineError title="Couldn't create the API token" message={createError.message} />}
       {created && (
-        <VStack gap={2} paddingBlockStart={3}>
-          <HStack align="end" wrap="wrap" gap={2}>
-            <TextInput
-              id="created-api-token"
-              label="New API token"
-              isReadOnly
-              value={created.token}
-              onFocus={(event) => event.target.select()}
-              width="min(32rem, 100%)"
-            />
-            <Button label="Copy" variant="secondary" icon={<Icon icon={Copy} />} onClick={() => copy(created.token, 'API token copied')} />
-          </HStack>
-          <Text as="p" type="supporting" color="secondary">
-            Copy it now. Pensieve shows it only once.
-          </Text>
-        </VStack>
+        <p>
+          <label htmlFor="created-api-token">New API token</label>
+          <br />
+          <input
+            type="text"
+            id="created-api-token"
+            readOnly
+            value={created.token}
+            onFocus={(event) => event.target.select()}
+            aria-describedby="created-token-note"
+          />{' '}
+          <button type="button" onClick={() => copy(created.token, 'API token copied')}>
+            Copy
+          </button>
+          <br />
+          <small id="created-token-note">Copy it now. Pensieve shows it only once.</small>
+        </p>
       )}
-    </SettingsSection>
+    </section>
   );
 }
 
-function InlineError({ title, message }) {
+function InlineError({ title, message, onRetry }) {
   return (
-    <VStack role="alert">
-      <Banner status="error" title={title} description={message} />
-    </VStack>
+    <p role="alert">
+      <strong>{title}:</strong> {message}{' '}
+      {onRetry && (
+        <button type="button" onClick={onRetry}>
+          Retry
+        </button>
+      )}
+    </p>
   );
 }
 
 function SaveStatus({ status, onRetry }) {
-  if (status.state === 'saving')
-    return (
-      <HStack role="status" gap={2} align="center">
-        <Spinner size="sm" aria-label="Saving settings" />
-        <Text color="secondary">Saving…</Text>
-      </HStack>
-    );
-  if (status.state === 'saved')
-    return (
-      <HStack role="status" gap={2} align="center">
-        <Icon icon={Check} color="success" />
-        <Text color="secondary">Saved</Text>
-      </HStack>
-    );
-  if (status.state === 'error')
-    return (
-      <VStack role="alert">
-        <Banner status="error" title="Couldn't save settings" description={status.error.message} endContent={<Button label="Retry" size="sm" onClick={onRetry} />} />
-      </VStack>
-    );
+  if (status.state === 'saving') return <p role="status">Saving…</p>;
+  if (status.state === 'saved') return <p role="status">Saved</p>;
+  if (status.state === 'error') return <InlineError title="Couldn't save settings" message={status.error.message} onRetry={onRetry} />;
   return null;
 }

@@ -1,130 +1,117 @@
 @layer app {
   .reading-progress {
     position: sticky;
-    top: calc(-1 * var(--spacing-6));
+    inset-block-start: 0;
     z-index: 1;
     background: var(--color-background-body);
+    max-inline-size: 44rem;
   }
 
   .page-view {
     display: grid;
-    grid-template-columns: minmax(0, 47.5rem) minmax(14rem, 18rem);
+    grid-template-columns: minmax(0, 44rem) minmax(0, 16rem);
     gap: var(--spacing-8);
     align-items: start;
-    justify-content: center;
+    overflow-wrap: anywhere;
   }
 
-  .page-view > .astryx-layout {
-    margin: 0;
+  .page-view > * {
+    min-inline-size: 0;
   }
 
-  .page-view > .astryx-layout,
-  .page-sidebar {
-    min-width: 0;
+  .page-header,
+  .page-drawer-header {
+    border-block-end: var(--border-width) solid var(--color-border);
+    overflow-wrap: anywhere;
+  }
+
+  .page-header {
+    padding-block: var(--spacing-2);
+  }
+
+  .page-header h1,
+  .page-drawer-header h2,
+  .page-sidebar h2,
+  .page-drawer-content :is(.page-links, .page-changes) > h3,
+  .page-prose :is(h1, h2, h3, h4, h5, h6) {
+    color: var(--color-text-manual-section);
+    font-family: var(--font-family-heading);
+    font-weight: normal;
+  }
+
+  .page-header h1 {
+    min-inline-size: 0;
+    font-size: 1.75rem;
+  }
+
+  .page-drawer-header h2 {
+    font-size: 1.375rem;
   }
 
   .page-sidebar {
     position: sticky;
-    top: 0;
+    inset-block-start: 0;
+    border-inline-start: var(--border-width) solid var(--color-border);
+    padding-inline-start: var(--spacing-4);
   }
 
-  @media (max-width: 70rem) {
+  .page-sidebar h2,
+  .page-drawer-content :is(.page-links, .page-changes) > h3 {
+    margin-block-end: var(--spacing-1);
+    font-size: 1.125rem;
+  }
+
+  .page-meta,
+  .page-note {
+    color: var(--color-text-secondary);
+    font-size: 0.875rem;
+  }
+
+  .page-drawer-content {
+    overflow-wrap: anywhere;
+  }
+
+  .page-prose {
+    min-inline-size: 0;
+    max-inline-size: 75ch;
+    font-family: var(--font-family-code);
+  }
+
+  .page-prose :is(h1, h2, h3, h4, h5, h6) {
+    scroll-margin-block-start: var(--spacing-2);
+  }
+
+  :is(.page-view, .page-drawer-content) a[href] {
+    max-inline-size: 100%;
+    text-decoration: underline;
+  }
+
+  :is(.page-view, .page-drawer-content) a[href]:not([data-color="secondary"]) {
+    color: var(--color-text-link);
+  }
+
+  .page-references,
+  .page-changes ul {
+    list-style: disc;
+    padding-inline-start: var(--spacing-5);
+  }
+
+  .page-changes li + li {
+    margin-block-start: var(--spacing-2);
+  }
+
+  @media (max-width: 54rem) {
     .page-view {
-      grid-template-columns: minmax(0, 47.5rem);
+      grid-template-columns: minmax(0, 44rem);
+      gap: var(--spacing-4);
     }
 
     .page-sidebar {
       position: static;
-    }
-  }
-
-  @scope ([data-astryx-theme="pensieve-manual"]) to ([data-astryx-theme]) {
-    .page-view {
-      grid-template-columns: minmax(0, 40rem) minmax(14rem, 15rem);
-    }
-
-    .page-header,
-    .page-drawer-header {
-      border-block-end: 1px solid var(--color-border);
-    }
-
-    .page-header {
-      padding-block-end: var(--spacing-3);
-    }
-
-    .page-sidebar {
-      border-inline-start: 1px solid var(--color-border);
-      padding-inline-start: var(--spacing-4);
-    }
-
-    .page-header h1,
-    .page-drawer-header h2 {
-      color: var(--color-accent);
-      font: 550 clamp(2.125rem, 4vw, 2.45rem)/1.12 var(--font-family-heading);
-      letter-spacing: -0.044em;
-      overflow-wrap: anywhere;
-    }
-
-    .page-header .astryx-breadcrumbs,
-    .page-meta,
-    .page-properties dt {
-      font-family: var(--font-family-code);
-      font-variant-numeric: tabular-nums;
-    }
-
-    .page-prose {
-      max-inline-size: 62ch;
-      font: 1.125rem/1.55 var(--font-family-manual-serif);
-      overflow-wrap: anywhere;
-    }
-
-    .page-prose .astryx-markdown {
-      font: inherit;
-    }
-
-    .page-prose :is(h1, h2, h3, h4, h5, h6) {
-      color: var(--color-text-manual-section);
-    }
-
-    .page-prose h2 {
-      font: 600 1.3rem/1.3 var(--font-family-heading);
-      letter-spacing: -0.025em;
-    }
-
-    .page-sidebar h2,
-    .page-drawer-content :is(.page-references, .page-changes) h3 {
-      color: var(--color-text-manual-section);
-      font: 700 0.85rem/1.4 var(--font-family-code);
-      text-transform: uppercase;
-      letter-spacing: 0.065em;
-    }
-
-    :is(.page-prose, .page-properties, .page-references, .page-sidebar .astryx-outline) a[href] {
-      text-decoration: underline;
-      text-underline-offset: 0.16em;
-      text-decoration-thickness: 1px;
-    }
-
-    :is(.page-prose, .page-properties, .page-references, .page-sidebar .astryx-outline) a[href]:not([data-color="secondary"]) {
-      color: var(--color-text-link);
-    }
-
-    .page-prose pre {
-      border-inline-start: 2px solid var(--color-border-emphasized);
-      background-color: var(--color-background-muted);
-    }
-
-    @media (max-width: 70rem) {
-      .page-view {
-        grid-template-columns: minmax(0, 40rem);
-      }
-
-      .page-sidebar {
-        border-inline-start: 0;
-        border-block-start: 1px solid var(--color-border);
-        padding-inline-start: 0;
-        padding-block-start: var(--spacing-4);
-      }
+      border-inline-start: 0;
+      border-block-start: var(--border-width) solid var(--color-border);
+      padding-inline-start: 0;
+      padding-block-start: var(--spacing-3);
     }
   }
 }

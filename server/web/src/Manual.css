@@ -1,77 +1,105 @@
 @layer app {
-  @scope ([data-astryx-theme="pensieve-manual"]) to ([data-astryx-theme]) {
-    h1.astryx-heading {
-      color: var(--color-accent);
-      font-size: clamp(2rem, 4vw, 2.45rem);
-    }
+  .manual-shell {
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr);
+    height: 100%;
+    font-size: 1rem;
+  }
 
-    .astryx-link[data-color="accent"] {
-      color: var(--color-text-link);
-      text-decoration: underline;
-      text-decoration-thickness: 1px;
-      text-underline-offset: 0.16em;
-    }
+  .astryx-markdown,
+  .astryx-markdown :is(.astryx-markdown-paragraph, p, li, td, th, pre, code) {
+    font-family: var(--font-family-code);
+  }
 
-    .astryx-link[data-color="accent"] > .astryx-text {
-      text-decoration: inherit;
-      text-underline-offset: inherit;
-    }
+  .astryx-markdown :is(pre, img) {
+    max-inline-size: 100%;
+  }
 
-    .manual-top-nav {
-      border-block-start: 3px solid var(--color-accent);
-    }
+  .astryx-markdown pre {
+    overflow-x: auto;
+  }
 
-    .manual-wordmark span {
-      color: var(--color-text-primary);
-      font: 600 1.25rem/1.25 var(--font-family-manual-serif);
-    }
+  .login-page {
+    padding: 1rem;
+    max-width: 26rem;
+  }
 
-    .manual-rail {
-      inline-size: 11rem;
-      padding-block-start: var(--spacing-3);
-    }
+  .manual-header {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem 1.5rem;
+    flex-wrap: wrap;
+    padding: 0.4rem 1rem;
+    background: var(--color-background-muted);
+    border-bottom: 1px solid var(--color-border);
+  }
 
-    .manual-nav-section span[id] {
-      color: var(--color-text-secondary);
-      font: 600 0.8rem/1.45 var(--font-family-code);
-      text-transform: uppercase;
-      letter-spacing: 0.1em;
-    }
+  .manual-header nav {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.25rem 1rem;
+  }
 
-    .manual-nav-row {
-      border-inline-start: 2px solid transparent;
-      border-radius: 0;
-    }
+  .manual-header a, .manual-header .commands, .astryx-link[data-color="accent"] {
+    color: var(--color-text-link);
+    text-decoration: underline;
+  }
 
-    .manual-nav-row[aria-current="page"] {
-      border-inline-start-color: var(--color-accent);
-      background-color: var(--color-background-muted);
-      color: var(--color-text-primary);
-      font-weight: 650;
-    }
+  .manual-header .wordmark, .manual-header [aria-current="page"] {
+    color: var(--color-text-primary);
+    text-decoration: none;
+    font-weight: bold;
+  }
 
-    .manual-shortcut {
-      color: var(--color-text-secondary);
-      font: 0.8rem/1.25 var(--font-family-code);
-      white-space: nowrap;
-    }
+  .manual-header .commands {
+    margin-inline-start: auto;
+    font: inherit;
+    cursor: pointer;
+  }
 
-    .manual-palette {
-      border: 1px solid var(--color-border-emphasized);
-    }
+  .skip-nav:not(:focus) {
+    position: absolute;
+    clip-path: inset(50%);
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+  }
 
-    .manual-top-nav[data-mode="mobile-bar"] :is(.manual-palette, .manual-phone-control, .manual-nav-toggle) {
-      min-inline-size: 44px;
-      min-block-size: 44px;
-    }
+  .manual-shell > main {
+    overflow: auto;
+    padding: 1rem;
+  }
 
-    .manual-top-nav[data-mode="mobile-bar"] .manual-palette {
-      border-color: transparent;
-      background-color: transparent;
-    }
+  .manual-shell > .graph-main {
+    padding: 0;
+    overflow: hidden;
+  }
 
-    .astryx-mobile-nav :is(.manual-shortcut, .manual-nav-toggle) {
-      display: none;
+  h1, h2, h3, h4, h5, h6,
+  .astryx-heading {
+    font-family: var(--font-family-heading);
+    font-weight: normal;
+    letter-spacing: normal;
+  }
+
+  h1, h1.astryx-heading {
+    color: var(--color-text-manual-section);
+    font-size: 1.75rem;
+  }
+
+  @media (max-width: 48rem) {
+    .manual-header nav {
+      order: 1;
+      width: 100%;
+    }
+  }
+
+  @media (pointer: coarse) {
+    .manual-header :is(a, button):not(.skip-nav) {
+      display: inline-flex;
+      align-items: center;
+      min-height: 2rem;
     }
   }
 }

@@ -1,10 +1,16 @@
-// The pensieve theme. `astryx experimental theme editor` wrote this file once and never changes it again.
-// The checked settings live in pensieve.settings.json and the generated pensieve.settings.ts;
-// change them with `astryx experimental theme editor set pensieve ...`. Add your own changes below: they win over the settings.
-import {defineTheme} from '@astryxdesign/core/theme';
-import {pensieveSettings} from './pensieve.settings';
+import { defineTheme } from '@astryxdesign/core/theme';
 
-const HEADING_WEIGHTS = {
+const paper: [string, string] = ['#ffffff', '#181818'];
+const chrome: [string, string] = ['#e8e8e8', '#282828'];
+const ink: [string, string] = ['#181818', '#eeeeee'];
+const secondary: [string, string] = ['#505050', '#c2c2c2'];
+const blue: [string, string] = ['#1030ff', '#a4c5ff'];
+const green: [string, string] = ['#008000', '#99d599'];
+
+const typography = {
+  '--font-family-body': 'sans-serif',
+  '--font-family-heading': 'Helvetica, sans-serif',
+  '--font-family-code': 'monospace, courier',
   '--text-heading-1-weight': 'var(--font-weight-normal)',
   '--text-heading-2-weight': 'var(--font-weight-normal)',
   '--text-heading-3-weight': 'var(--font-weight-normal)',
@@ -14,64 +20,53 @@ const HEADING_WEIGHTS = {
 };
 
 export const pensieveTheme = defineTheme({
-  extends: pensieveSettings,
   name: 'pensieve',
-  typography: {
-    heading: {
-      family: 'Iowan Old Style',
-      fallbacks: 'Palatino Linotype, Book Antiqua, Georgia, serif',
-    },
-  },
   tokens: {
-    '--color-background-body': ['#f5f4ed', '#111111'],
-    '--color-background-surface': ['#faf9f5', '#151515'],
-    '--color-background-card': ['#f5f4ed', '#20201f'],
-    '--color-background-popover': ['#faf9f5', '#20201f'],
-    '--color-background-muted': ['#f0eee6', '#212121'],
-    '--color-text-primary': ['#141413', '#f0efec'],
-    '--color-text-secondary': ['#6b6a65', '#c3c2b8'],
-    '--color-text-disabled': ['#6b6a65', '#898781'],
-    '--color-icon-primary': ['#141413', '#f0efec'],
-    '--color-icon-secondary': ['#6b6a65', '#c3c2b8'],
-    '--color-icon-disabled': ['#6b6a65', '#898781'],
-    '--color-border': ['#e3e1d9', '#292929'],
-    '--color-border-emphasized': ['#6b6a65', '#898781'],
-    '--color-skeleton': ['#f0eee6', '#292929'],
-    '--color-accent': ['#c6613f', '#d97757'],
-    '--color-on-accent': ['#141413', '#141413'],
-    '--color-accent-muted': ['#f0ddd3', '#4a2d24'],
-    '--color-text-accent': ['#9e4a2f', '#d97757'],
-    '--color-icon-accent': ['#9e4a2f', '#d97757'],
-    '--focus-outline-color': ['#c6613f', '#d97757'],
-    '--radius-container': '16px',
+    ...typography,
+    '--color-background-body': paper,
+    '--color-background-surface': paper,
+    '--color-background-card': paper,
+    '--color-background-popover': paper,
+    '--color-background-muted': chrome,
+    '--color-skeleton': chrome,
+    '--color-text-primary': ink,
+    '--color-icon-primary': ink,
+    '--color-text-secondary': secondary,
+    '--color-icon-secondary': secondary,
+    '--color-text-disabled': secondary,
+    '--color-icon-disabled': secondary,
+    '--color-border': ['#adadad', '#666666'],
+    '--color-border-emphasized': ['#666666', '#aaaaaa'],
+    '--color-accent': blue,
+    '--color-on-accent': paper,
+    '--color-accent-muted': ['#e8edff', '#253447'],
+    '--color-text-accent': blue,
+    '--color-icon-accent': blue,
+    '--focus-outline-color': blue,
+    '--radius-inner': '0px',
+    '--radius-element': '0px',
+    '--radius-container': '0px',
     '--radius-page': '0px',
-    ...HEADING_WEIGHTS,
+    '--shadow-low': 'none',
+    '--shadow-med': 'none',
+    '--shadow-high': 'none',
+  },
+  localTokens: {
+    '--color-text-link': blue,
+    '--color-text-manual-section': green,
   },
   components: {
-    'top-nav-heading': {
-      base: {
-        fontFamily: 'var(--font-family-heading)',
-        fontSize: '1.25rem',
-        fontWeight: 400,
+    button: {
+      base: { borderRadius: 'var(--radius-element)' },
+      'variant:secondary': {
+        border: '1px solid var(--color-border-emphasized)',
       },
-    },
-    'side-nav-item': {
-      base: { borderRadius: '8px' },
-      selected: { backgroundColor: 'var(--color-background-muted)' },
-    },
-    item: {
-      selected: { '--color-text-secondary': 'light-dark(#3d3d3a, #c3c2b8)' },
-    },
-    'segmented-control-item': {
-      base: { '--color-text-secondary': 'light-dark(#3d3d3a, #c3c2b8)' },
     },
   },
   adaptations: {
-    rules: [
-      {
-        when: { width: { below: 'lg' }, pointer: 'coarse' },
-        value: { tokens: HEADING_WEIGHTS },
-      },
-    ],
+    rules: [{
+      when: { width: { below: 'lg' }, pointer: 'coarse' },
+      value: { tokens: typography },
+    }],
   },
 });

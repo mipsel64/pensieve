@@ -13,7 +13,7 @@ import { Circle, Crosshair, RotateCcw, Settings2, X } from 'lucide-react';
 import { href } from './router.js';
 import { ErrorNote, formatNumber, KIND_COLORS, KIND_PALETTE, KINDS, Loading, useResource } from './ui.jsx';
 import { GraphControls, resetGraph, useSettings } from './settings.jsx';
-import { cssColor, useTheme } from './theme.js';
+import { useTheme } from '@astryxdesign/core/theme';
 import './Graph.css';
 
 const kindOf = (node) => (node.missing ? 'missing' : (node.kind ?? 'untyped'));
@@ -24,21 +24,21 @@ const noop = () => {};
 
 // Labels are sized in graph units, so they grow as you zoom in.
 const LABEL_SIZE = 5;
-const FONT = '"IBM Plex Sans Variable", system-ui, sans-serif';
+const FONT = 'sans-serif';
 const BASE_FONT = `${LABEL_SIZE}px ${FONT}`;
 
-// The canvas cannot read var(), so colors are looked up per theme and accent.
-function readPalette() {
+// Canvas paint needs color values instead of CSS variable references.
+function graphPalette(token) {
   const kinds = {};
-  for (const [kind, color] of Object.entries(KIND_PALETTE)) kinds[kind] = cssColor(`--color-text-${color}`);
+  for (const [kind, color] of Object.entries(KIND_PALETTE)) kinds[kind] = token(`--color-text-${color}`);
   return {
     kinds,
-    link: cssColor('--color-border-emphasized'),
-    linkDim: cssColor('--color-border'),
-    label: cssColor('--color-text-secondary'),
-    halo: cssColor('--color-background-surface'),
-    ring: cssColor('--color-border'),
-    highlight: cssColor('--color-accent'),
+    link: token('--color-border-emphasized'),
+    linkDim: token('--color-border'),
+    label: token('--color-text-secondary'),
+    halo: token('--color-background-surface'),
+    ring: token('--color-border'),
+    highlight: token('--color-accent'),
   };
 }
 
@@ -59,10 +59,8 @@ export function GraphView({ params }) {
   const graph = useResource('/graph');
   const { settings, update, status, retry } = useSettings();
   const g = settings.graph;
-  const { resolved } = useTheme();
-  // <Theme> marks <html> in a layout effect after this render, so the new palette is read once the commit is done.
-  const [palette, setPalette] = useState(readPalette);
-  useEffect(() => setPalette(readPalette()), [resolved, settings.accent]);
+  const { token } = useTheme();
+  const palette = useMemo(() => graphPalette(token), [token]);
   const box = useRef(null);
   const fg = useRef(null);
   const [size, setSize] = useState({ width: 0, height: 0 });
