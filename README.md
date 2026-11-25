@@ -1,10 +1,3 @@
-<p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="docs/banner-dark.svg">
-    <img src="docs/banner-light.svg" alt="Pensieve: persistent memory for agents, shared across devices." width="100%">
-  </picture>
-</p>
-
 # Pensieve
 
 ![Claude Code, Codex and Pi connect over MCP to a Pensieve server, which keeps pages, links, a section index and the journal in one SQLite file; a read-only web UI shows search, the graph, the timeline and the journal.](docs/pensieve.svg)
@@ -91,7 +84,13 @@ A database leak is a full compromise. To end every session, grant and API token 
 
 ## Web UI
 
-Open the server's URL and sign in with Google, the server token, or either method in `both` mode. The UI opens on search (an answer built from the passages `recall` gives an agent, or pages ranked by keyword), and has a dashboard, the link graph, a timeline of writes, the journal (each day's session summaries beside the `Scratchpad`, read-only like the rest of the UI), activity by day, agent and type, and settings. Pages open in a side panel or as a full page, and every view has its own link. Press `/` to search. Appearance (System, Light or Dark) is saved per browser, `Cmd`/`Ctrl`+`K` opens the command palette, and `?` lists the keyboard shortcuts.
+Open the server URL and sign in. **Answer** shows passages from memory with their sources; **Pages** searches for whole pages by keyword. Open a source in the side panel to keep your place in the results, or open it as a full page to read and link to a section. The dashboard, graph, timeline, journal, and activity views each have their own link.
+
+For a layout modeled on the [Linux manual pages](https://man7.org/linux/man-pages/), select **Settings → Appearance → Accent → Manual**. It uses green titles, underlined blue links, and a numbered source list. Manual is optional; the default is Claude. The accent is shared across browsers, but **System**, **Light**, or **Dark** applies only to the current browser.
+
+![Manual search results with two numbered sources and their matching passages.](docs/manual-search.webp)
+
+Press `/` to search, `Cmd`/`Ctrl`+`K` to open the command palette, or `?` to list keyboard shortcuts.
 
 Signing in sets a signed, `SameSite=Lax` session cookie that lasts 30 days and can only read memory: page writes still need the bearer token, so no web page can change memory through the browser. The cookie also allows UI settings and Connected apps changes. Signing out clears the cookie in that browser. Rotating `server.token` ends token sessions. Removing an email from `oauth.allowed_emails` ends that account's access. The UI settings exception is `PUT /api/settings`: UI settings (accent, search defaults, graph filters and forces) are a JSON object of at most 16 KiB stored in the database, so every browser shares them. Tailscale Serve sends `X-Forwarded-Proto: https`, which marks the cookie `Secure`; other HTTPS proxies must send it too.
 

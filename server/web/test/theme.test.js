@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 import vm from 'node:vm';
-import { THEME_COLORS, THEME_KEY, applyThemeColor, nextPreference, normalizePreference, readPreference, resolveTheme, writePreference } from '../src/theme.js';
+import { THEME_KEY, nextPreference, normalizePreference, readPreference, resolveTheme, writePreference } from '../src/theme.js';
 
 const memoryStorage = (initial = {}) => {
   const data = { ...initial };
@@ -53,19 +53,13 @@ test('the preference is stored under pensieve.theme and survives bad storage', (
   assert.doesNotThrow(() => writePreference(null, 'dark'));
 });
 
-test('applyThemeColor paints the theme-color meta', () => {
-  for (const theme of ['light', 'dark']) {
-    const attributes = {};
-    applyThemeColor({ setAttribute: (name, value) => (attributes[name] = value) }, theme);
-    assert.equal(attributes.content, THEME_COLORS[theme]);
-  }
-  assert.doesNotThrow(() => applyThemeColor(null, 'dark'));
-});
-
 const fakeRoot = () => {
   const attributes = {};
   return { attributes, setAttribute: (name, value) => (attributes[name] = String(value)) };
 };
+
+// No server accent is available before sign-in. The first paint uses the default theme.
+const defaultPaper = { light: '#f5f4ed', dark: '#111111' };
 
 // The script runs before Astryx's <Theme>, so it must set what <Theme mode> will: data-theme only for an explicit choice.
 test('the pre-paint script sets the Astryx theme attributes and the theme color', () => {
@@ -82,7 +76,7 @@ test('the pre-paint script sets the Astryx theme attributes and the theme color'
       const label = `${stored} / dark=${systemDark}`;
       assert.equal(root.attributes['data-astryx-theme'], 'pensieve', label);
       assert.equal(root.attributes['data-theme'], stored === 'light' || stored === 'dark' ? stored : undefined, label);
-      assert.equal(meta.content, THEME_COLORS[resolveTheme(stored, systemDark)], label);
+      assert.equal(meta.content, defaultPaper[resolveTheme(stored, systemDark)], label);
     }
   }
 });
@@ -101,5 +95,5 @@ test('the pre-paint script follows the system when storage throws', () => {
     matchMedia: () => ({ matches: true }),
   });
   assert.equal(root.attributes['data-theme'], undefined);
-  assert.equal(meta.content, THEME_COLORS.dark);
+  assert.equal(meta.content, defaultPaper.dark);
 });

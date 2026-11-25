@@ -73,6 +73,7 @@ export function PageDrawer({ title, closeHref }) {
       <Layout
         header={
           <DrawerHeader
+            className="page-drawer-header"
             title={
               <Text type="inherit" data-autofocus tabIndex={-1}>
                 {name}
@@ -95,13 +96,13 @@ export function PageDrawer({ title, closeHref }) {
           />
         }
         content={
-          <LayoutContent>
+          <LayoutContent className="page-drawer-content">
             <VStack gap={6}>
               <PageStatus page={p.page} title={title} />
               {p.data && (
                 <>
                   <Properties fields={p.fields} missing={p.missing} />
-                  <VStack as="article" aria-label="Page content">
+                  <VStack as="article" aria-label="Page content" className="page-prose">
                     <Markdown missing={p.missing} newestFirst={isDailyJournal(p.data)}>
                       {p.body}
                     </Markdown>
@@ -151,7 +152,7 @@ export function PageView({ title }) {
           content={
             <LayoutContent isScrollable={false} padding={0}>
               <VStack gap={6}>
-                <VStack as="header" gap={3}>
+                <VStack as="header" className="page-header" gap={3}>
                   <HStack justify="between" align="center" wrap="wrap" gap={2}>
                     <Breadcrumbs variant="supporting">
                       <BreadcrumbItem href={href('search')}>Memory</BreadcrumbItem>
@@ -172,7 +173,7 @@ export function PageView({ title }) {
                 {p.data && (
                   <>
                     <Properties fields={p.fields} missing={p.missing} />
-                    <VStack ref={prose} gap={0}>
+                    <VStack ref={prose} className="page-prose" gap={0}>
                       <Markdown missing={p.missing} newestFirst={newestFirst} onAnchor={copySection}>
                         {p.body}
                       </Markdown>
@@ -197,7 +198,7 @@ export function PageView({ title }) {
 
 function PageMeta({ data, minutes, badge = true }) {
   return (
-    <Text type="supporting" color="secondary">
+    <Text className="page-meta" type="supporting" color="secondary">
       {badge && (
         <>
           <TypeBadge kind={data.kind} />{' '}
@@ -237,7 +238,7 @@ function PageMenu({ title }) {
 function Properties({ fields, missing }) {
   if (!fields.length) return null;
   return (
-    <MetadataList columns="multi" label={{ position: 'top' }}>
+    <MetadataList className="page-properties" columns="multi" label={{ position: 'top' }}>
       {fields.map(([key, value]) => (
         <MetadataListItem key={key} label={key}>
           <Markdown missing={missing}>{value}</Markdown>
@@ -254,7 +255,7 @@ function LinkLists({ data, as = 3 }) {
     ['Links', data.links.map((link) => ({ title: link.title, missing: !link.exists })), 'This page links to nothing.'],
   ];
   return (
-    <Grid columns={{ minWidth: 240, max: 2 }} gap={4}>
+    <Grid className="page-references" columns={{ minWidth: 240, max: 2 }} gap={4}>
       {lists.map(([label, items, none]) => (
         <VStack key={label} as="section" gap={2} aria-labelledby={`${ids}-${label}`}>
           <HStack gap={2} align="center">
@@ -284,7 +285,7 @@ function RecentChanges({ changes, as = 3 }) {
   if (changes.error) return <ErrorNote error={changes.error} onRetry={changes.reload} />;
   if (!changes.data?.length) return null;
   return (
-    <VStack as="section" gap={2}>
+    <VStack as="section" className="page-changes" gap={2}>
       <Heading level={as}>Recent changes</Heading>
       <List density="compact" edge="flush">
         {changes.data.map((change) => (
@@ -293,7 +294,7 @@ function RecentChanges({ changes, as = 3 }) {
             align="start"
             label={change.summary ?? <Text color="secondary">No summary</Text>}
             description={
-              <Text type="supporting" color="secondary">
+              <Text className="page-meta" type="supporting" color="secondary">
                 <Text type="code" color="inherit">rev {change.rev}</Text> · {change.by} · <RelTime iso={change.at} />
               </Text>
             }
