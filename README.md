@@ -86,13 +86,13 @@ A database leak is a full compromise. To end every session, grant and API token 
 
 Open the server URL and sign in. **Answer** shows passages from memory with their sources; **Pages** searches for whole pages by keyword. Open a source in the side panel to keep your place in the results, or open it as a full page to read and link to a section. The dashboard, graph, timeline, journal, and activity views each have their own link.
 
-For a layout modeled on the [Linux manual pages](https://man7.org/linux/man-pages/), select **Settings → Appearance → Accent → Manual**. It uses green titles, underlined blue links, and a numbered source list. Manual is optional; the default is Claude. The accent is shared across browsers, but **System**, **Light**, or **Dark** applies only to the current browser.
+Pensieve uses one layout based on the [Linux manual pages](https://man7.org/linux/man-pages/): plain navigation links, green headings, and monospace passages. It follows the device’s light or dark mode. In **Settings**, choose the default search mode and whether to rerank page results, manage API tokens and connected apps when Google sign-in is enabled, or sign out. Graph controls are on the graph itself.
 
 ![Manual search results with two numbered sources and their matching passages.](docs/manual-search.webp)
 
 Press `/` to search, `Cmd`/`Ctrl`+`K` to open the command palette, or `?` to list keyboard shortcuts.
 
-Signing in sets a signed, `SameSite=Lax` session cookie that lasts 30 days and can only read memory: page writes still need the bearer token, so no web page can change memory through the browser. The cookie also allows UI settings and Connected apps changes. Signing out clears the cookie in that browser. Rotating `server.token` ends token sessions. Removing an email from `oauth.allowed_emails` ends that account's access. The UI settings exception is `PUT /api/settings`: UI settings (accent, search defaults, graph filters and forces) are a JSON object of at most 16 KiB stored in the database, so every browser shares them. Tailscale Serve sends `X-Forwarded-Proto: https`, which marks the cookie `Secure`; other HTTPS proxies must send it too.
+Signing in sets a signed, `SameSite=Lax` session cookie that lasts 30 days and can only read memory: page writes still need the bearer token, so no web page can change memory through the browser. The cookie also allows UI settings and Connected apps changes. Signing out clears the cookie in that browser. Rotating `server.token` ends token sessions. Removing an email from `oauth.allowed_emails` ends that account's access. The UI settings exception is `PUT /api/settings`: search defaults and graph controls are stored in one JSON object of at most 16 KiB, shared across browsers. Tailscale Serve sends `X-Forwarded-Proto: https`, which marks the cookie `Secure`; other HTTPS proxies must send it too.
 
 ## Docker
 

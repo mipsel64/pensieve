@@ -1,153 +1,165 @@
 @layer app {
-  @scope ([data-astryx-theme="pensieve-manual"]) to ([data-astryx-theme]) {
-    .manual-search-home {
-      padding-block: calc(2 * var(--spacing-10)) var(--spacing-6);
-    }
+  .search-view {
+    max-inline-size: 48rem;
+    min-inline-size: 0;
+    overflow-wrap: anywhere;
+  }
 
-    .manual-search-crumb,
-    .manual-search-composer label[for="search-q"] {
-      color: var(--color-text-secondary);
-      font-family: var(--font-family-code);
-      font-size: 0.875rem;
-    }
+  .search-view > h1,
+  .search-results > h2,
+  .search-passage .astryx-markdown :is(h1, h2, h3, h4, h5, h6) {
+    color: var(--color-text-manual-section);
+    font-family: var(--font-family-heading);
+    font-weight: normal;
+  }
 
-    .manual-search-composer label[for="search-q"] {
-      font-weight: 600;
-    }
+  .search-view > h1 {
+    margin-block-end: var(--spacing-4);
+    font-size: 1.75rem;
+  }
 
-    .manual-search-title {
-      color: var(--color-accent);
-      font-family: var(--font-family-body);
-      font-size: clamp(2rem, 10vw, 2.45rem);
-      font-weight: 550;
-      line-height: 1.12;
-      letter-spacing: -0.044em;
-      text-wrap: balance;
-    }
+  .search-navigation {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--spacing-3);
+    margin-block-end: var(--spacing-4);
+    padding-block-end: var(--spacing-2);
+    border-block-end: var(--border-width) solid var(--color-border);
+  }
 
-    .manual-search-tabs {
-      border-block-end: var(--border-width) solid var(--color-border);
-    }
+  .search-navigation a[aria-current="page"] {
+    font-weight: bold;
+  }
 
-    /* Astryx places the section's negative margins on its outer wrapper. */
-    .manual-search-results > :has(> .astryx-section) {
-      margin: 0;
-    }
+  .search-form {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: var(--spacing-2);
+    justify-items: start;
+    max-inline-size: 32rem;
+    margin-block-end: var(--spacing-3);
+  }
 
-    .manual-search-section-title {
-      color: var(--color-text-manual-section);
-      font-family: var(--font-family-code);
-      font-size: 0.875rem;
-      font-weight: 700;
-      letter-spacing: 0.065em;
-      text-transform: uppercase;
-    }
+  .search-form > :is(label, fieldset) {
+    grid-column: 1 / -1;
+  }
 
-    .manual-search-composer {
-      box-shadow: none;
-      border: var(--border-width) solid var(--color-border-emphasized);
-      border-radius: var(--radius-container);
-    }
+  .search-form > input {
+    inline-size: 100%;
+    min-inline-size: 0;
+    min-block-size: 2rem;
+    padding: var(--spacing-1) var(--spacing-2);
+    background-color: var(--color-background-body);
+    border: var(--border-width) solid var(--color-border-emphasized);
+    color: var(--color-text-primary);
+    font: inherit;
+    font-size: max(1rem, 1em);
+  }
 
-    .manual-search-composer:has(input:focus-visible) {
-      outline: 2px solid var(--focus-outline-color);
-      outline-offset: 3px;
-    }
+  .search-form fieldset {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0 var(--spacing-3);
+    min-inline-size: 0;
+    margin: 0;
+    padding: 0;
+    border: 0;
+  }
 
-    .manual-search-control {
-      background: transparent;
-      border-color: transparent;
-      box-shadow: none;
-    }
+  .search-option {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--spacing-1);
+    min-block-size: 1.5rem;
+    cursor: pointer;
+  }
 
-    .manual-search-control input {
-      font-size: max(1rem, 1em);
-    }
+  .search-button {
+    min-block-size: 1.75rem;
+    padding: var(--spacing-1) var(--spacing-2);
+    background-color: var(--color-background-muted);
+    border: var(--border-width) solid var(--color-border-emphasized);
+    color: var(--color-text-primary);
+    font: inherit;
+    cursor: pointer;
+  }
 
-    .manual-search-modes {
-      border-block-start: var(--border-width) solid var(--color-border);
-      padding-block-start: var(--spacing-3);
-    }
+  .search-view :is(input, button, a, summary):focus-visible {
+    outline: 2px solid var(--focus-outline-color);
+    outline-offset: 2px;
+  }
 
-    .manual-search-modes .astryx-segmented-control {
-      padding: 0;
-      background: transparent;
-      box-shadow: none;
-    }
+  .search-results {
+    margin-block-start: var(--spacing-5);
+  }
 
-    /* In forced colors, keep Astryx's system selection colors together. */
-    @media (forced-colors: none) {
-      .manual-search-tabs .astryx-tab-indicator[data-selected] {
-        background-color: var(--color-accent);
-      }
+  .search-results > h2 {
+    margin-block-end: var(--spacing-2);
+    font-size: 1.25rem;
+  }
 
-      .manual-search-modes .astryx-segmented-control-item[aria-checked="true"] {
-        box-shadow: inset 0 -2px var(--color-accent);
-        background: var(--color-background-muted);
-      }
-    }
+  .search-view a[href] {
+    max-inline-size: 100%;
+    text-decoration: underline;
+  }
 
-    .manual-search-follow-up > .astryx-stack-item {
-      min-inline-size: 0;
-    }
+  .search-view a[href]:not([data-color="secondary"]) {
+    color: var(--color-text-link);
+  }
 
-    .manual-search-helper > p,
-    .manual-search-passage .astryx-markdown-paragraph,
-    .manual-search-passage .astryx-markdown-list {
-      font-family: var(--font-family-manual-serif);
-      line-height: 1.52;
-    }
+  .search-note {
+    color: var(--color-text-secondary);
+    font-size: 0.875rem;
+  }
 
-    .manual-search-helper > p {
-      font-size: 1.03rem;
-    }
+  .search-source-list,
+  .search-related-list {
+    padding-inline-start: var(--spacing-5);
+  }
 
-    .manual-search-helper strong {
-      font: 600 0.94rem var(--font-family-body);
-    }
+  .search-source-list {
+    list-style: decimal;
+  }
 
-    .manual-search-sources .astryx-list {
-      border-block-end: var(--border-width) solid var(--color-border);
-    }
+  .search-related-list {
+    list-style: disc;
+  }
 
-    .manual-search-source-title {
-      color: var(--color-text-link);
-      text-decoration: underline;
-      text-underline-offset: 0.16em;
-    }
+  .search-results summary {
+    inline-size: fit-content;
+    min-block-size: 1.5rem;
+    margin-block: var(--spacing-1);
+    cursor: pointer;
+  }
 
-    @media (pointer: coarse) {
-      .manual-search-source {
-        min-block-size: 44px;
-      }
-    }
+  .search-passage,
+  .search-hits > li {
+    padding-block: var(--spacing-3);
+    border-block-start: var(--border-width) solid var(--color-border);
+  }
 
-    .manual-search-source,
-    .manual-search-citation,
-    .manual-search-passage .astryx-markdown {
-      min-inline-size: 0;
-      overflow-wrap: anywhere;
-    }
+  .search-passage:first-of-type,
+  .search-hits {
+    margin-block-start: var(--spacing-2);
+  }
 
-    .manual-search-number {
-      min-inline-size: 3ch;
-      font-variant-numeric: tabular-nums;
-    }
+  .search-passage {
+    min-inline-size: 0;
+    font-family: var(--font-family-code);
+  }
 
-    .manual-search-passage .astryx-markdown {
-      margin-inline-start: var(--spacing-8);
-      max-inline-size: 62ch;
-    }
+  .search-citation {
+    margin-block-end: var(--spacing-2);
+    color: var(--color-text-secondary);
+  }
 
-    .manual-search-passage .astryx-markdown-paragraph,
-    .manual-search-passage .astryx-markdown-list {
-      font-size: 1.125rem;
-    }
+  .search-hits {
+    padding: 0;
+    list-style: none;
+  }
 
-    @media (max-width: 32rem) {
-      .manual-search-passage .astryx-markdown {
-        margin-inline-start: 0;
-      }
-    }
+  .search-hits h3 {
+    margin-block-end: var(--spacing-1);
+    font-size: 1rem;
   }
 }
