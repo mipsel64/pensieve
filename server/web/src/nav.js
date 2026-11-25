@@ -1,6 +1,6 @@
 import { Activity, History, LayoutDashboard, Network, NotebookPen, Search } from 'lucide-react';
 
-/** Views in the sidebar: id, label, icon and the key that follows `g`. */
+/** Navigation links: id, label, palette icon and the key that follows `g`. */
 export const NAV = [
   ['search', 'Search', Search, 's'],
   ['dashboard', 'Dashboard', LayoutDashboard, 'd'],

@@ -13,7 +13,7 @@ function scrollElement(heading) {
   return Boolean(heading);
 }
 
-/** The AppShell scroll region that contains the article. */
+/** The scroll region that contains the article. */
 export function useScrollContainer(root, content) {
   const scrollContainer = useRef(null);
   useLayoutEffect(() => {

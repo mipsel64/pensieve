@@ -4,42 +4,52 @@ import { isApple, modifierLabel, resolveKey } from '../src/shortcuts.js';
 import { parseRecent, pushRecent } from '../src/recent.js';
 
 const key = (k, extra = {}) => ({ key: k, metaKey: false, ctrlKey: false, altKey: false, shiftKey: false, ...extra });
+const textField = { tagName: 'INPUT', type: 'text' };
 
 test('Cmd or Ctrl+K opens the palette, even while typing', () => {
-  assert.deepEqual(resolveKey(key('k', { metaKey: true }), null, true).action, { type: 'palette' });
-  assert.deepEqual(resolveKey(key('K', { ctrlKey: true }), null, false).action, { type: 'palette' });
-  assert.equal(resolveKey(key('k', { metaKey: true, shiftKey: true }), null, false).action, null);
+  assert.deepEqual(resolveKey(key('k', { metaKey: true }), null, textField).action, { type: 'palette' });
+  assert.deepEqual(resolveKey(key('K', { ctrlKey: true })).action, { type: 'palette' });
+  assert.equal(resolveKey(key('k', { metaKey: true, shiftKey: true })).action, null);
 });
 
 test('single keys act only when not typing and without modifiers', () => {
-  assert.deepEqual(resolveKey(key('/'), null, false).action, { type: 'search' });
-  assert.deepEqual(resolveKey(key('?', { shiftKey: true }), null, false).action, { type: 'help' });
-  assert.deepEqual(resolveKey(key('t'), null, false).action, { type: 'theme' });
-  assert.equal(resolveKey(key('/'), null, true).action, null);
-  assert.equal(resolveKey(key('t', { ctrlKey: true }), null, false).action, null);
-  assert.equal(resolveKey(key('t', { altKey: true }), null, false).action, null);
+  assert.deepEqual(resolveKey(key('/')).action, { type: 'search' });
+  assert.deepEqual(resolveKey(key('?', { shiftKey: true })).action, { type: 'help' });
+  assert.equal(resolveKey(key('t')).action, null);
+  assert.equal(resolveKey(key('/'), null, textField).action, null);
+  assert.equal(resolveKey(key('/', { ctrlKey: true })).action, null);
+  assert.equal(resolveKey(key('/', { altKey: true })).action, null);
+});
+
+test('slash focuses search from a radio or checkbox, but does not interrupt text entry', () => {
+  for (const type of ['radio', 'checkbox']) {
+    assert.deepEqual(resolveKey(key('/'), null, { tagName: 'INPUT', type }).action, { type: 'search' });
+  }
+  for (const field of [textField, { tagName: 'INPUT', type: 'search' }, { tagName: 'TEXTAREA' }, { tagName: 'SELECT' }, { isContentEditable: true }]) {
+    assert.equal(resolveKey(key('/'), null, field).action, null);
+  }
 });
 
 test('a held key does not repeat its shortcut', () => {
-  assert.deepEqual(resolveKey(key('t', { repeat: true }), null, false), { action: null, pending: null });
-  assert.deepEqual(resolveKey(key('d', { repeat: true }), 'g', false), { action: null, pending: 'g' });
-  assert.deepEqual(resolveKey(key('k', { metaKey: true, repeat: true }), null, false).action, { type: 'palette' });
+  assert.deepEqual(resolveKey(key('/', { repeat: true })), { action: null, pending: null });
+  assert.deepEqual(resolveKey(key('d', { repeat: true }), 'g'), { action: null, pending: 'g' });
+  assert.deepEqual(resolveKey(key('k', { metaKey: true, repeat: true })).action, { type: 'palette' });
 });
 
 test('g waits for a second key', () => {
-  const first = resolveKey(key('g'), null, false);
+  const first = resolveKey(key('g'));
   assert.deepEqual(first, { action: null, pending: 'g' });
-  assert.deepEqual(resolveKey(key('d'), first.pending, false), { action: { type: 'go', view: 'dashboard' }, pending: null });
-  assert.deepEqual(resolveKey(key('g'), 'g', false).action, { type: 'go', view: 'graph' });
+  assert.deepEqual(resolveKey(key('d'), first.pending), { action: { type: 'go', view: 'dashboard' }, pending: null });
+  assert.deepEqual(resolveKey(key('g'), 'g').action, { type: 'go', view: 'graph' });
   for (const [k, view] of [['s', 'search'], ['t', 'timeline'], ['j', 'journal'], ['a', 'activity']]) {
-    assert.deepEqual(resolveKey(key(k), 'g', false).action, { type: 'go', view });
+    assert.deepEqual(resolveKey(key(k), 'g').action, { type: 'go', view });
   }
 });
 
 test('an unknown second key cancels g and does nothing', () => {
-  assert.deepEqual(resolveKey(key('x'), 'g', false), { action: null, pending: null });
-  assert.deepEqual(resolveKey(key('D', { shiftKey: true }), 'g', false), { action: null, pending: null });
-  assert.deepEqual(resolveKey(key('d'), 'g', true), { action: null, pending: null });
+  assert.deepEqual(resolveKey(key('x'), 'g'), { action: null, pending: null });
+  assert.deepEqual(resolveKey(key('D', { shiftKey: true }), 'g'), { action: null, pending: null });
+  assert.deepEqual(resolveKey(key('d'), 'g', textField), { action: null, pending: null });
 });
 
 test('modifierLabel follows the platform', () => {

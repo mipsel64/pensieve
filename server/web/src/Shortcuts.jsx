@@ -5,8 +5,6 @@ import { HStack, VStack } from '@astryxdesign/core/Stack';
 import { Heading, Text } from '@astryxdesign/core/Text';
 import { resolveKey, SHORTCUT_GROUPS } from './shortcuts.js';
 
-const typingIn = (el) => ['INPUT', 'TEXTAREA', 'SELECT'].includes(el?.tagName) || Boolean(el?.isContentEditable);
-
 /** Global keyboard shortcuts. `on[type]` handlers run for the actions `resolveKey` names; `g` waits 1.5 seconds for its second key. */
 export function useShortcuts(handlers) {
   const latest = useRef(handlers);
@@ -16,7 +14,7 @@ export function useShortcuts(handlers) {
     let timer = 0;
     const onKey = (event) => {
       if (event.defaultPrevented || event.isComposing) return;
-      const result = resolveKey(event, pending, typingIn(document.activeElement));
+      const result = resolveKey(event, pending, document.activeElement);
       pending = result.pending;
       clearTimeout(timer);
       if (pending) timer = setTimeout(() => (pending = null), 1500);

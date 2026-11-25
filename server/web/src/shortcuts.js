@@ -10,7 +10,6 @@ export const SHORTCUT_GROUPS = (mod) => [
     items: [
       { keys: [mod, 'K'], label: 'Open the command palette' },
       { keys: ['/'], label: 'Focus search' },
-      { keys: ['t'], label: 'Cycle appearance: System, Light, Dark' },
       { keys: ['?'], label: 'Show this help' },
       { keys: ['Esc'], label: 'Close a dialog, menu or page panel' },
     ],
@@ -30,12 +29,14 @@ export const SHORTCUT_GROUPS = (mod) => [
 
 /**
  * One key press → `{ action, pending }`. `pending` is the key waiting for a second one, to pass back on the next call.
- * Actions: `{ type: 'palette' | 'help' | 'search' | 'theme' }` or `{ type: 'go', view }`.
+ * Actions: `{ type: 'palette' | 'help' | 'search' }` or `{ type: 'go', view }`.
  */
-export function resolveKey(event, pending, typing) {
+export function resolveKey(event, pending = null, target) {
   const key = event.key.length === 1 ? event.key.toLowerCase() : event.key;
   const modified = event.metaKey || event.ctrlKey;
   if (modified && !event.altKey && !event.shiftKey && key === 'k') return { action: { type: 'palette' }, pending: null };
+  const typing = target?.isContentEditable || target?.tagName === 'TEXTAREA' || target?.tagName === 'SELECT' ||
+    (target?.tagName === 'INPUT' && target.type !== 'radio' && target.type !== 'checkbox');
   if (modified || event.altKey || typing) return { action: null, pending: null };
   if (event.repeat) return { action: null, pending };
   if (pending === 'g') {
@@ -44,7 +45,6 @@ export function resolveKey(event, pending, typing) {
   }
   if (key === '/') return { action: { type: 'search' }, pending: null };
   if (key === '?') return { action: { type: 'help' }, pending: null };
-  if (key === 't' && !event.shiftKey) return { action: { type: 'theme' }, pending: null };
   if (key === 'g' && !event.shiftKey) return { action: null, pending: 'g' };
   return { action: null, pending: null };
 }

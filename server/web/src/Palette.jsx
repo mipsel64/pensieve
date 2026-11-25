@@ -67,7 +67,7 @@ function PaletteInput() {
 }
 
 /**
- * Command palette: pages (recently written ones filtered here, the rest looked up on the server after a pause), views, appearance and help.
+ * Command palette: pages (recently written ones filtered here, the rest looked up on the server after a pause), views and help.
  * `commands` is `[{ id, group, label, keywords, hint, icon, run }]`.
  */
 export function Palette({ commands, onClose }) {
@@ -97,7 +97,7 @@ export function Palette({ commands, onClose }) {
         const seen = new Set(recents.map((item) => item.key));
         add('Recent', recents);
         add('Recently written', indexHits.map((hit) => pageItem(hit)).filter((page) => !seen.has(page.key)).slice(0, 4));
-        for (const title of ['Go to', 'Appearance', 'Help']) add(title, commands.filter((command) => command.group === title).map((command) => commandItem(command)));
+        for (const title of ['Go to', 'Help']) add(title, commands.filter((command) => command.group === title).map((command) => commandItem(command)));
         return out;
       }
       const pages = fuzzyFilter(indexHits, term, (hit) => hit.title, { minPerChar: 2 })
